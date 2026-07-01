@@ -62,9 +62,16 @@ namespace Invector.vShooter
         [Header("Effects")]
         public bool testShootEffect;
         public Light lightOnShot;
+        [Tooltip("Repairs muzzle particle materials at runtime so old particle assets do not render as opaque white squares in URP.")]
+        public bool repairMuzzleParticles = true;
+        public Color muzzleFlashFallbackColor = new Color(1f, 0.88f, 0.18f, 0.65f);
+        public Color muzzleSmokeFallbackColor = new Color(1f, 0.8f, 0.15f, 0.45f);
+        [Range(0.05f, 5f)]
+        public float muzzleParticleMaxSize = 0.85f;
         [SerializeField]
         public ParticleSystem[] emittShurykenParticle;
         protected Transform sender;
+        protected readonly HashSet<ParticleSystem> repairedMuzzleParticles = new HashSet<ParticleSystem>();
 
         [HideInInspector]
         public OnDestroyEvent onDestroy;
@@ -388,8 +395,137 @@ namespace Invector.vShooter
             {
                 foreach (ParticleSystem pe in emittShurykenParticle)
                 {
-                    pe.Emit(1);
+                    if (pe)
+                    {
+                        ConfigureMuzzleParticle(pe);
+                        pe.Emit(1);
+                    }
                 }
+            }
+        }
+
+        protected virtual void ConfigureMuzzleParticle(ParticleSystem particle)
+        {
+            if (!repairMuzzleParticles || !particle || repairedMuzzleParticles.Contains(particle))
+            {
+                return;
+            }
+
+            var isSmoke = particle.name.IndexOf("smoke", System.StringComparison.OrdinalIgnoreCase) >= 0;
+            var fallbackColor = isSmoke ? muzzleSmokeFallbackColor : muzzleFlashFallbackColor;
+            var renderer = particle.GetComponent<ParticleSystemRenderer>();
+
+            if (renderer)
+            {
+                renderer.maxParticleSize = Mathf.Min(renderer.maxParticleSize, muzzleParticleMaxSize);
+                renderer.minParticleSize = Mathf.Min(renderer.minParticleSize, muzzleParticleMaxSize);
+
+                var materials = renderer.materials;
+                for (int i = 0; i < materials.Length; i++)
+                {
+                    ConfigureMuzzleParticleMaterial(materials[i], fallbackColor, isSmoke);
+                    fallbackColor = ReadParticleColor(materials[i], fallbackColor);
+                }
+
+                renderer.materials = materials;
+            }
+
+            var main = particle.main;
+            main.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 1f, 1f, Mathf.Clamp01(fallbackColor.a)));
+            repairedMuzzleParticles.Add(particle);
+        }
+
+        protected virtual void ConfigureMuzzleParticleMaterial(Material material, Color fallbackColor, bool isSmoke)
+        {
+            if (!material)
+            {
+                return;
+            }
+
+            var color = ReadParticleColor(material, fallbackColor);
+            var particleShader = Shader.Find("Universal Render Pipeline/Particles/Unlit") ??
+                                 Shader.Find("Particles/Standard Unlit") ??
+                                 Shader.Find("Legacy Shaders/Particles/Additive");
+            if (particleShader)
+            {
+                material.shader = particleShader;
+            }
+
+            var mainTexture = material.HasProperty("_MainTex") ? material.GetTexture("_MainTex") : null;
+            if (mainTexture && material.HasProperty("_BaseMap") && !material.GetTexture("_BaseMap"))
+            {
+                material.SetTexture("_BaseMap", mainTexture);
+            }
+
+            SetMaterialColor(material, "_BaseColor", color);
+            SetMaterialColor(material, "_Color", color);
+            SetMaterialColor(material, "_TintColor", color);
+            SetMaterialColor(material, "_BaseColorAddSubDiff", color);
+            SetMaterialColor(material, "_EmissionColor", new Color(color.r, color.g, color.b, 1f));
+
+            SetMaterialFloat(material, "_Surface", 1f);
+            SetMaterialFloat(material, "_Blend", isSmoke ? 0f : 2f);
+            SetMaterialFloat(material, "_AlphaClip", 0f);
+            SetMaterialFloat(material, "_ZWrite", 0f);
+            SetMaterialFloat(material, "_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            SetMaterialFloat(material, "_DstBlend", (float)(isSmoke ? UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha : UnityEngine.Rendering.BlendMode.One));
+
+            material.SetOverrideTag("RenderType", "Transparent");
+            material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.DisableKeyword("_ALPHATEST_ON");
+        }
+
+        protected virtual Color ReadParticleColor(Material material, Color fallbackColor)
+        {
+            if (!material)
+            {
+                return fallbackColor;
+            }
+
+            if (material.HasProperty("_TintColor"))
+            {
+                var color = material.GetColor("_TintColor");
+                if (color.a > 0f)
+                {
+                    return color;
+                }
+            }
+
+            if (material.HasProperty("_BaseColor"))
+            {
+                var color = material.GetColor("_BaseColor");
+                if (color.a > 0f)
+                {
+                    return color;
+                }
+            }
+
+            if (material.HasProperty("_Color"))
+            {
+                var color = material.GetColor("_Color");
+                if (color.a > 0f)
+                {
+                    return color;
+                }
+            }
+
+            return fallbackColor;
+        }
+
+        protected virtual void SetMaterialColor(Material material, string propertyName, Color color)
+        {
+            if (material.HasProperty(propertyName))
+            {
+                material.SetColor(propertyName, color);
+            }
+        }
+
+        protected virtual void SetMaterialFloat(Material material, string propertyName, float value)
+        {
+            if (material.HasProperty(propertyName))
+            {
+                material.SetFloat(propertyName, value);
             }
         }
 

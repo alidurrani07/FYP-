@@ -1,0 +1,56 @@
+{
+    "itemReferences": [],
+    "equipAreas": [
+        {
+            "slotsData": [
+                {
+                    "hasItem": false,
+                    "indexOfItem": 0
+                },
+                {
+                    "hasItem": false,
+                    "indexOfItem": 0
+                },
+                {
+                    "hasItem": false,
+                    "indexOfItem": 0
+                }
+            ],
+            "indexOfSelectedSlot": 0
+        },
+        {
+            "slotsData": [
+                {
+                    "hasItem": false,
+                    "indexOfItem": 0
+                },
+                {
+                    "hasItem": false,
+                    "indexOfItem": 0
+                },
+                {
+                    "hasItem": false,
+                    "indexOfItem": 0
+                }
+            ],
+            "indexOfSelectedSlot": 0
+        },
+        {
+            "slotsData": [
+                {
+                    "hasItem": false,
+                    "indexOfItem": 0
+                },
+                {
+                    "hasItem": false,
+                    "indexOfItem": 0
+                },
+                {
+                    "hasItem": false,
+                    "indexOfItem": 0
+                }
+            ],
+            "indexOfSelectedSlot": 0
+        }
+    ]
+}

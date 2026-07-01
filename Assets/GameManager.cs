@@ -7,7 +7,6 @@ public class GameManager : MonoBehaviour
 
     [Header("Bomb Settings")]
     public int totalBombs = 3;
-    private int defusedBombs = 0;
 
     [Header("Timer")]
     public float time = 30f;
@@ -20,68 +19,28 @@ public class GameManager : MonoBehaviour
     public GameObject gameOverUI;
     public GameObject winUI;
 
-    private bool gameEnded = false;
-
     void Awake()
     {
         instance = this;
-    }
 
-    void Update()
-    {
-        if (gameEnded) return;
-
-        time -= Time.deltaTime;
-
-        if (timerText != null)
-            timerText.text = "Time: " + Mathf.Ceil(time).ToString();
-
-        if (time <= 0)
-        {
-            GameOver();
-        }
+        Time.timeScale = 1f;
+        HideOldMissionUI();
     }
 
     public void BombDefused()
     {
-        defusedBombs++;
-
-        Debug.Log("Defused: " + defusedBombs);
-
-        if (defusedBombs >= totalBombs)
-        {
-            Win();
-        }
+        Debug.Log("BombDefused ignored. Demo Scene 1 uses DemoSceneBombMission now.");
     }
 
-    void GameOver()
+    private void HideOldMissionUI()
     {
-        StartCoroutine(GameOverSequence());
-    }
+        if (timerText != null)
+            timerText.gameObject.SetActive(false);
 
-    void Win()
-    {
-        gameEnded = true;
         if (winUI != null)
-            winUI.SetActive(true);
+            winUI.SetActive(false);
 
-        Time.timeScale = 0f;
-    }
-
-    System.Collections.IEnumerator GameOverSequence()
-    {
-        // Blast play
-        if (explosionEffect != null)
-            explosionEffect.Play();
-
-        // thoda wait
-        yield return new WaitForSeconds(delayBeforeFail);
-
-        // Fail UI show
         if (gameOverUI != null)
-            gameOverUI.SetActive(true);
-
-        Time.timeScale = 0f;
+            gameOverUI.SetActive(false);
     }
-
 }

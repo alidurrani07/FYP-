@@ -2090,6 +2090,9 @@ GameObject:
   - component: {fileID: 114000012253088462}
   - component: {fileID: 114000010521027968}
   - component: {fileID: 114000012085757830}
+  - component: {fileID: 114174800000000001}
+  - component: {fileID: 114984300000000001}
+  - component: {fileID: 114696000000000001}
   m_Layer: 9
   m_Name: EnemyAI_A
   m_TagString: Enemy
@@ -2097,6 +2100,101 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
+--- !u!114 &114174800000000001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000011763127730}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1748e4f1b8e42e4a9fb5b406e0c1887, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  playerTag: Player
+  detectionRange: 30
+  closeRange: 4
+  bulletDamage: 8
+  fireInterval: 0.8
+  aimHeight: 1.35
+  requireLineOfSight: 0
+  lineOfSightMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  muzzle: {fileID: 0}
+  gunPrefab: {fileID: 0}
+  createFallbackGun: 1
+  gunVisualScale: 1.25
+  gunShoulderOffset: {x: 0.22, y: -0.08, z: 0.32}
+  useAimIK: 1
+  forceHandPoseIfNoIKPass: 1
+  recoilDistance: 0.12
+  recoilDuration: 0.12
+  muzzleFlashDuration: 0.08
+  bulletVisualPrefab: {fileID: 0}
+  bulletVisualSpeed: 60
+  bulletVisualLifetime: 2
+  muzzleShotParticles: []
+  muzzleParticlePrefab: {fileID: 0}
+  hitParticlePrefab: {fileID: 0}
+  drawDebugRay: 1
+--- !u!114 &114984300000000001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000011763127730}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c98d4f87c32e4d5e9dcb65d9d2058f1a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  enemyModelPrefab: {fileID: 100100000, guid: c5aedaa0195bb8b47a11d3de396b7b16, type: 3}
+  useDefaultEnemyVisualWhenMissing: 1
+  modelParent: {fileID: 0}
+  hideOriginalRenderersWhenModelIsAssigned: 1
+  modelLocalPosition: {x: 0, y: 0, z: 0}
+  modelLocalEulerAngles: {x: 0, y: 0, z: 0}
+  modelLocalScale: {x: 1, y: 1, z: 1}
+  modelMaterials: []
+  applyMaterialsToCurrentModelIfNoPrefab: 1
+  riflePrefab: {fileID: 0}
+  rifleVisualScale: 1.25
+  rifleShoulderOffset: {x: 0.22, y: -0.08, z: 0.32}
+  bulletPrefab: {fileID: 0}
+  bulletSpeed: 60
+  bulletLifetime: 2
+  muzzleParticlesOnEnemy: []
+  muzzleParticlePrefab: {fileID: 0}
+  hitParticlePrefab: {fileID: 0}
+  embeddedGunName: GunENEMY
+  embeddedBulletName: BulletEnemy
+  useEmbeddedGunAndBulletFromModel: 1
+  applyOnAwake: 1
+--- !u!114 &114696000000000001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000011763127730}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b6fc96e8b2774a5ab389fb5f0a3f7e20, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  keepAnimatorAlwaysAnimating: 1
+  resetMovementParametersOnStart: 1
+  crossFadeIdleOnStart: 1
+  idleStateNames:
+  - Idle
+  - Free Locomotion
+  - Locomotion
+  disableNavMeshAgentOnThisObject: 0
+  snapEnabledAgentToNavMesh: 1
+  navMeshSampleRadius: 5
 --- !u!4 &4000013474298986
 Transform:
   m_ObjectHideFlags: 0
@@ -2237,17 +2335,18 @@ MonoBehaviour:
   tagsToDetect:
     tags:
     - Player
+    - CompanionAI
   layersToDetect:
     serializedVersion: 2
-    m_Bits: 256
+    m_Bits: 34048
   obstaclesLayer:
     serializedVersion: 2
     m_Bits: 0
-  sortTargetFromDistance: 0
+  sortTargetFromDistance: 1
   fieldOfView: 210
-  maxDetectDistance: 5
-  minDetectDistance: 2
-  distanceToLostTarget: 5
+  maxDetectDistance: 18
+  minDetectDistance: 3
+  distanceToLostTarget: 10
   chaseStopDistance: 1
   drawAgentPath: 0
   displayGizmos: 1

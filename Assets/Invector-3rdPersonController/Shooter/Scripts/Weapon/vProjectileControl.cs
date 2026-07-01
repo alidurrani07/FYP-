@@ -16,6 +16,10 @@ namespace Invector.vShooter
         public bool destroyOnCast = true;
         [Tooltip("Control Trail renderer")]
         public TrailRenderer trail;
+        public bool repairProjectileVisuals = true;
+        public Color projectileMeshColor = new Color(1f, 0.58f, 0.08f, 1f);
+        public Color projectileTrailColor = new Color(1f, 0.42f, 0.03f, 0.45f);
+        public float projectileTrailWidth = 0.012f;
         public ProjectilePassDamage onPassDamage;
         public ProjectileCastColliderEvent onCastCollider;
         public ProjectileCastColliderEvent onDestroyProjectile;
@@ -41,6 +45,10 @@ namespace Invector.vShooter
 
         protected virtual void Start()
         {
+            if (IsDemoScene1())
+            {
+                EnsureEnemyHitLayers();
+            }
             transform.SetParent(vObjectContainer.root, true);
             debugLife = bulletLife;
             _rigidBody = GetComponent<Rigidbody>();
@@ -51,6 +59,135 @@ namespace Invector.vShooter
             {
                 AddTrailPosition();
             }
+
+            ConfigureProjectileVisuals();
+        }
+
+        protected virtual void EnsureEnemyHitLayers()
+        {
+            var enemyLayer = LayerMask.NameToLayer("Enemy");
+            if (enemyLayer >= 0)
+            {
+                hitLayer |= 1 << enemyLayer;
+            }
+
+            var bodyPartLayer = LayerMask.NameToLayer("BodyPart");
+            if (bodyPartLayer >= 0)
+            {
+                hitLayer |= 1 << bodyPartLayer;
+            }
+
+            ignoreTags.Remove("Enemy");
+        }
+
+        protected virtual void ConfigureProjectileVisuals()
+        {
+            if (!repairProjectileVisuals)
+            {
+                return;
+            }
+
+            var meshRenderers = GetComponentsInChildren<MeshRenderer>(true);
+            for (int i = 0; i < meshRenderers.Length; i++)
+            {
+                var renderer = meshRenderers[i];
+                if (!renderer)
+                {
+                    continue;
+                }
+
+                var materials = renderer.materials;
+                for (int materialIndex = 0; materialIndex < materials.Length; materialIndex++)
+                {
+                    ApplyMaterialColor(materials[materialIndex], projectileMeshColor, false);
+                }
+            }
+
+            if (trail)
+            {
+                trail.startWidth = projectileTrailWidth;
+                trail.endWidth = 0f;
+                trail.startColor = projectileTrailColor;
+                trail.endColor = new Color(projectileTrailColor.r, projectileTrailColor.g, projectileTrailColor.b, 0f);
+                if (trail.material)
+                {
+                    ApplyMaterialColor(trail.material, projectileTrailColor, true);
+                }
+            }
+        }
+
+        protected virtual void ApplyMaterialColor(Material material, Color color, bool transparent)
+        {
+            if (!material)
+            {
+                return;
+            }
+
+            var shader = Shader.Find(transparent ? "Universal Render Pipeline/Particles/Unlit" : "Universal Render Pipeline/Lit");
+            if (shader == null)
+            {
+                shader = Shader.Find(transparent ? "Particles/Standard Unlit" : "Standard");
+            }
+
+            if (shader != null)
+            {
+                material.shader = shader;
+            }
+
+            if (material.HasProperty("_BaseColor"))
+            {
+                material.SetColor("_BaseColor", color);
+            }
+            if (material.HasProperty("_Color"))
+            {
+                material.SetColor("_Color", color);
+            }
+            if (material.HasProperty("_TintColor"))
+            {
+                material.SetColor("_TintColor", color);
+            }
+            if (material.HasProperty("_EmissionColor"))
+            {
+                material.SetColor("_EmissionColor", transparent ? Color.black : color * 0.5f);
+            }
+        }
+
+        protected virtual void ApplyProjectileDamage(Collider hitCollider, vDamage projectileDamage)
+        {
+            if (hitCollider == null || projectileDamage == null)
+            {
+                return;
+            }
+
+            var attacker = projectileDamage.sender ? projectileDamage.sender.GetComponent<vIMeleeFighter>() : null;
+            var hitObject = hitCollider.gameObject;
+
+            if (hitObject.GetComponent<vIAttackReceiver>() != null || hitObject.GetComponent<vIDamageReceiver>() != null)
+            {
+                hitObject.ApplyDamage(projectileDamage, attacker);
+                return;
+            }
+
+            vIDamageReceiver receiver = hitObject.GetComponentInParent<vIDamageReceiver>();
+            if (receiver == null)
+            {
+                receiver = hitObject.GetComponentInChildren<vIDamageReceiver>();
+            }
+
+            if (receiver == null)
+            {
+                return;
+            }
+
+            projectileDamage.receiver = receiver.transform;
+            vIAttackReceiver attackReceiver = receiver.gameObject.GetComponent<vIAttackReceiver>();
+            if (attackReceiver != null)
+            {
+                attackReceiver.OnReceiveAttack(projectileDamage, attacker);
+                return;
+            }
+
+            receiver.TakeDamage(projectileDamage);
         }
 
         protected virtual void Update()
@@ -61,7 +198,8 @@ namespace Invector.vShooter
                 transform.rotation = Quaternion.LookRotation(_rigidBody.linearVelocity.normalized, transform.up);
             }
 
-            if (Physics.Linecast(previousPosition, transform.position + transform.forward * 0.5f, out hitInfo, hitLayer))
+            var triggerMode = IsDemoScene1() ? QueryTriggerInteraction.Collide : QueryTriggerInteraction.UseGlobal;
+            if (Physics.Linecast(previousPosition, transform.position + transform.forward * 0.5f, out hitInfo, hitLayer, triggerMode))
             {
                 if (!hitInfo.collider)
                 {
@@ -102,7 +240,14 @@ namespace Invector.vShooter
                     {
                         onPassDamage.Invoke(damage);
 
-                        hitInfo.collider.gameObject.ApplyDamage(damage, damage.sender ? damage.sender.GetComponent<vIMeleeFighter>() : null);
+                        if (IsDemoScene1())
+                        {
+                            ApplyProjectileDamage(hitInfo.collider, damage);
+                        }
+                        else
+                        {
+                            hitInfo.collider.gameObject.ApplyDamage(damage, damage.sender ? damage.sender.GetComponent<vIMeleeFighter>() : null);
+                        }
                     }
 
                     var rigb = hitInfo.collider.gameObject.GetComponent<Rigidbody>();
@@ -279,6 +424,11 @@ namespace Invector.vShooter
             previousPosition = transform.position;
 
 
+        }
+
+        protected virtual bool IsDemoScene1()
+        {
+            return UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Demo Scene 1";
         }
 
         private void AddTrailPosition()

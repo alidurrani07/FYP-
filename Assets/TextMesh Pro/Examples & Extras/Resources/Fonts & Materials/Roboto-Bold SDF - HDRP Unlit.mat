@@ -8,7 +8,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Roboto-Bold SDF - HDRP Unlit
-  m_Shader: {fileID: -6465566751694194690, guid: f63d574838ccfb44f84acc05fed0af48, type: 3}
+  m_Shader: {fileID: 4800000, guid: fe393ace9b354375a9cb14cdbbc28be4, type: 3}
   m_ShaderKeywords: _ALPHATEST_ON _ENABLE_FOG_ON_TRANSPARENT _SURFACE_TYPE_TRANSPARENT
   m_LightmapFlags: 1
   m_EnableInstancingVariants: 0

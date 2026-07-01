@@ -12652,7 +12652,7 @@ MonoBehaviour:
   ignoreTags: []
   hitLayer:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 33281
   projectile: {fileID: 1728788478831288, guid: 4de48263cb1c7954caf2de077128408a, type: 3}
   muzzle: {fileID: 4967697779739514}
   projectilesPerShot: 1

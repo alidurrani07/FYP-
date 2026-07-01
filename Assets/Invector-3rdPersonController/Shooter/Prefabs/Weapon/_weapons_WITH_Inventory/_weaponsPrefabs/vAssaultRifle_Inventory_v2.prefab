@@ -27210,7 +27210,7 @@ MonoBehaviour:
   - Player
   hitLayer:
     serializedVersion: 2
-    m_Bits: 32769
+    m_Bits: 33281
   projectile: {fileID: 1000010710861650, guid: 22773fb6a3ebd59429b49fd6e288058e, type: 3}
   muzzle: {fileID: 4000012731015802}
   projectilesPerShot: 1
@@ -27226,6 +27226,10 @@ MonoBehaviour:
   emptyClip: {fileID: 8300000, guid: 9b2ce00d16b72c34a9b46200421a6def, type: 3}
   testShootEffect: 0
   lightOnShot: {fileID: 10829992}
+  repairMuzzleParticles: 1
+  muzzleFlashFallbackColor: {r: 1, g: 0.88, b: 0.18, a: 0.65}
+  muzzleSmokeFallbackColor: {r: 1, g: 0.8, b: 0.15, a: 0.45}
+  muzzleParticleMaxSize: 0.85
   emittShurykenParticle:
   - {fileID: 198893295435253854}
   - {fileID: 198039580061606108}

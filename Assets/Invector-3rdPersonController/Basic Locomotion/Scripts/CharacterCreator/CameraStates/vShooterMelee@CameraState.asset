@@ -15,9 +15,9 @@ MonoBehaviour:
   Name: 
   tpCameraStates:
   - Name: Default
-    forward: -1
-    right: 0.2
-    defaultDistance: 9
+    forward: -0.637
+    right: 0.15
+    defaultDistance: 21.71
     maxDistance: 12
     minDistance: 0.6
     height: 1.02
@@ -32,7 +32,7 @@ MonoBehaviour:
     rotationOffSet: {x: 8, y: 0, z: 0}
     cullingHeight: 1.9
     cullingMinDist: 0.01
-    fov: 85.96
+    fov: 35
     useZoom: 0
     fixedAngle: {x: 360, y: 78}
     lookPoints:

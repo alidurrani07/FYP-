@@ -2282,18 +2282,18 @@ MonoBehaviour:
   sphereSensor: {fileID: 4857827265805906334}
   tagsToDetect:
     tags:
-    - Player
+    - Enemy
   layersToDetect:
     serializedVersion: 2
-    m_Bits: 1
+    m_Bits: 33280
   obstaclesLayer:
     serializedVersion: 2
     m_Bits: 0
-  sortTargetFromDistance: 0
-  fieldOfView: 95
-  maxDetectDistance: 5
-  minDetectDistance: 2
-  distanceToLostTarget: 5
+  sortTargetFromDistance: 1
+  fieldOfView: 220
+  maxDetectDistance: 18
+  minDetectDistance: 3
+  distanceToLostTarget: 10
   chaseStopDistance: 1
   drawAgentPath: 0
   displayGizmos: 0
@@ -2337,14 +2337,14 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   _companionTag: Player
-  _companionMaxDistance: 10
+  _companionMaxDistance: 18
   _followSpeed: 1
   _followStopDistance: 2
   _moveToStopDistance: 0.5
   _moveToTarget: {fileID: 0}
   _companionState: 1
   _companion: {fileID: 0}
-  debug: 1
+  debug: 0
   debugUIText: {fileID: 0}
 --- !u!54 &2542250185917688400
 Rigidbody:

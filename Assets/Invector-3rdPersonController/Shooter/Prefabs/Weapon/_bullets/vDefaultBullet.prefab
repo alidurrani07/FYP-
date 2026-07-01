@@ -192,6 +192,10 @@ MonoBehaviour:
   forceMultiplier: 3
   destroyOnCast: 1
   trail: {fileID: 5488307411070260006}
+  repairProjectileVisuals: 1
+  projectileMeshColor: {r: 1, g: 0.58, b: 0.08, a: 1}
+  projectileTrailColor: {r: 1, g: 0.42, b: 0.03, a: 0.45}
+  projectileTrailWidth: 0.012
   onPassDamage:
     m_PersistentCalls:
       m_Calls: []
@@ -298,7 +302,7 @@ CapsuleCollider:
   m_Radius: 0.5
   m_Height: 1
   m_Direction: 1
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Center: {x: 0, y: 0.05, z: 0}
 --- !u!1 &4237945129793484416
 GameObject:
   m_ObjectHideFlags: 0

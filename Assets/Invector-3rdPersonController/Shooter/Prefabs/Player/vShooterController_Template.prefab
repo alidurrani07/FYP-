@@ -1017,7 +1017,7 @@ MonoBehaviour:
   canUseMeleeAiming: 0
   damageLayer:
     serializedVersion: 2
-    m_Bits: 32769
+    m_Bits: 33281
   ignoreTags:
     tags:
     - Player

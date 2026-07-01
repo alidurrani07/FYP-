@@ -4,23 +4,16 @@ public class BombAutoDefuse : MonoBehaviour
 {
     private bool isDone = false;
 
-
-    void Start()
-    {
-        Debug.Log("Script Working");
-    }
-
     private void OnTriggerEnter(Collider other)
     {
         if (other.CompareTag("Player") && !isDone)
         {
             isDone = true;
 
-            Debug.Log("Bomb Defused!");
+            Debug.Log("BombAutoDefuse ignored. Demo Scene 1 uses DemoSceneBombMission for bomb placement.");
 
-            gameObject.SetActive(false);
-
-            GameManager.instance.BombDefused();
+            if (GameManager.instance != null)
+                GameManager.instance.BombDefused();
         }
     }
 }

@@ -1,5 +1,6 @@
 using UnityEngine;
 using Invector;
+using Invector.vEventSystems;
 
 public class PlayerBulletDamage : MonoBehaviour
 {
@@ -13,54 +14,62 @@ public class PlayerBulletDamage : MonoBehaviour
     {
         if (hasHit) return;
 
-        // Check if hit object or its parent has Invector health
-        vHealthController health = other.GetComponentInParent<vHealthController>();
-
-        if (health != null)
-        {
-            hasHit = true;
-
-            vDamage damage = new vDamage()
-            {
-                damageValue = damageAmount,
-                sender = transform,
-                hitPosition = transform.position,
-                receiver = health.transform
-            };
-
-            health.TakeDamage(damage);
-
-            Debug.Log("Bullet hit Invector AI: " + health.gameObject.name);
-
-            Destroy(gameObject, destroyDelay);
-        }
+        TryDamage(other, transform.position, "Bullet hit Invector AI: ");
     }
 
     private void OnCollisionEnter(Collision collision)
     {
         if (hasHit) return;
 
-        vHealthController health = collision.collider.GetComponentInParent<vHealthController>();
+        ContactPoint contact = collision.contactCount > 0 ? collision.contacts[0] : default;
+        Vector3 hitPoint = collision.contactCount > 0 ? contact.point : transform.position;
+        TryDamage(collision.collider, hitPoint, "Bullet collided with Invector AI: ");
+    }
 
-        if (health != null)
+    private void TryDamage(Collider hitCollider, Vector3 hitPoint, string logPrefix)
+    {
+        if (hitCollider == null)
+        {
+            return;
+        }
+
+        vDamage damage = new vDamage()
+        {
+            damageValue = damageAmount,
+            sender = transform,
+            hitPosition = hitPoint
+        };
+
+        vIDamageReceiver receiver = hitCollider.GetComponent<vIDamageReceiver>();
+        if (receiver == null)
+        {
+            receiver = hitCollider.GetComponentInParent<vIDamageReceiver>();
+        }
+
+        if (receiver != null)
         {
             hasHit = true;
-
-            ContactPoint contact = collision.contacts[0];
-
-            vDamage damage = new vDamage()
-            {
-                damageValue = damageAmount,
-                sender = transform,
-                hitPosition = contact.point,
-                receiver = health.transform
-            };
-
-            health.TakeDamage(damage);
-
-            Debug.Log("Bullet collided with Invector AI: " + health.gameObject.name);
-
+            receiver.TakeDamage(damage);
+            Debug.Log(logPrefix + hitCollider.gameObject.name);
             Destroy(gameObject, destroyDelay);
+            return;
         }
+
+        vHealthController health = hitCollider.GetComponentInParent<vHealthController>();
+        if (health == null)
+        {
+            health = hitCollider.GetComponentInChildren<vHealthController>();
+        }
+
+        if (health == null)
+        {
+            return;
+        }
+
+        hasHit = true;
+        damage.receiver = health.transform;
+        health.TakeDamage(damage);
+        Debug.Log(logPrefix + health.gameObject.name);
+        Destroy(gameObject, destroyDelay);
     }
 }

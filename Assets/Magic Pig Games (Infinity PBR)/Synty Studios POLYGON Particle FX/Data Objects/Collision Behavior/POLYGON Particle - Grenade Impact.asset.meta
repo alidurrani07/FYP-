@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: fc1ae1864459e4ec3b20ce50047f30d8
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 282082
+  packageName: Projectile Factory for POLYGON Particle FX by Synty Studios
+  packageVersion: 1.0.15
+  assetPath: Assets/Magic Pig Games (Infinity PBR)/Synty Studios POLYGON Particle
+    FX/Data Objects/Collision Behavior/POLYGON Particle - Grenade Impact.asset
+  uploadId: 932204
