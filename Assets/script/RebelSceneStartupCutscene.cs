@@ -7,6 +7,7 @@ public class RebelSceneStartupCutscene : MonoBehaviour
 {
     [Header("Scene")]
     public string rebelSceneName = "RebelScene";
+    public string armySceneName = "ArmyScene";
     public string cutsceneParentName = "CutScenesCameras";
 
     [Header("Cameras")]
@@ -29,11 +30,27 @@ public class RebelSceneStartupCutscene : MonoBehaviour
     private bool changedTimeScale;
     private float savedTimeScale = 1f;
 
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void AutoCreateForRebelScene()
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void RegisterSceneLoadedHandler()
     {
-        Scene scene = SceneManager.GetActiveScene();
-        if (!scene.IsValid() || scene.name != "RebelScene")
+        SceneManager.sceneLoaded -= HandleSceneLoaded;
+        SceneManager.sceneLoaded += HandleSceneLoaded;
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void PrepareInitialScene()
+    {
+        HandleSceneLoaded(SceneManager.GetActiveScene(), LoadSceneMode.Single);
+    }
+
+    private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        if (!scene.IsValid())
+        {
+            return;
+        }
+
+        if (!IsSupportedScene(scene.name))
         {
             return;
         }
@@ -57,7 +74,7 @@ public class RebelSceneStartupCutscene : MonoBehaviour
             scene = SceneManager.GetActiveScene();
         }
 
-        if (scene.name != rebelSceneName || hasPlayed)
+        if (!IsSupportedScene(scene.name) || hasPlayed)
         {
             return;
         }
@@ -133,6 +150,7 @@ public class RebelSceneStartupCutscene : MonoBehaviour
         camera01.depth = camera01Depth;
         camera02.depth = camera02Depth;
         camera02.transform.position = camera02StartPosition;
+        SetGameplayCameraActive(scene);
     }
 
     private void OnDisable()
@@ -250,6 +268,11 @@ public class RebelSceneStartupCutscene : MonoBehaviour
         }
     }
 
+    private static bool IsSupportedScene(string sceneName)
+    {
+        return sceneName == "RebelScene" || sceneName == "ArmyScene";
+    }
+
     private static void SetNamedSceneCamerasActive(Scene scene, string cameraName, Camera activeCamera)
     {
         Camera[] cameras = Resources.FindObjectsOfTypeAll<Camera>();
@@ -262,6 +285,49 @@ public class RebelSceneStartupCutscene : MonoBehaviour
             }
 
             candidate.gameObject.SetActive(candidate == activeCamera);
+        }
+    }
+
+    private static void SetGameplayCameraActive(Scene scene)
+    {
+        Camera mainCamera = Camera.main != null && Camera.main.gameObject.scene == scene
+            ? Camera.main
+            : FindSceneCamera(scene, "MainCamera", null);
+
+        if (mainCamera != null)
+        {
+            mainCamera.gameObject.SetActive(true);
+            mainCamera.enabled = true;
+
+            AudioListener mainListener = mainCamera.GetComponent<AudioListener>();
+            if (mainListener != null)
+            {
+                mainListener.enabled = true;
+            }
+        }
+
+        DisableNamedSceneCamera(scene, "Camera01");
+        DisableNamedSceneCamera(scene, "Camera02");
+    }
+
+    private static void DisableNamedSceneCamera(Scene scene, string cameraName)
+    {
+        Camera[] cameras = Resources.FindObjectsOfTypeAll<Camera>();
+        for (int i = 0; i < cameras.Length; i++)
+        {
+            Camera candidate = cameras[i];
+            if (candidate == null || candidate.gameObject.scene != scene || candidate.name != cameraName)
+            {
+                continue;
+            }
+
+            AudioListener listener = candidate.GetComponent<AudioListener>();
+            if (listener != null)
+            {
+                listener.enabled = false;
+            }
+
+            candidate.gameObject.SetActive(false);
         }
     }
 
