@@ -32,6 +32,46 @@ MonoBehaviour:
     FakeLoadingTime: 9.8
     Backgrounds:
     - {fileID: 21300000, guid: e5b79643d9af2fb49a250b739573ac89, type: 3}
+  - SceneName: ArmyScene
+    SceneAsset: {fileID: 102900000, guid: d18e84642ffd1524b972f27b9b1bece3, type: 3}
+    DisplayName: ArmyScene
+    Description: 
+    SkipType: 3
+    LoadingType: 0
+    FakeLoadingTime: 2
+    Backgrounds: []
+  - SceneName: RebelScene
+    SceneAsset: {fileID: 102900000, guid: 1b9e5004a55cd354e9089daef5760703, type: 3}
+    DisplayName: RebelScene
+    Description: 
+    SkipType: 3
+    LoadingType: 0
+    FakeLoadingTime: 2
+    Backgrounds: []
+  - SceneName: Demo Scene 1
+    SceneAsset: {fileID: 102900000, guid: d5ec66f4eda219f4abaa61fc932808cd, type: 3}
+    DisplayName: Demo Scene 1
+    Description: 
+    SkipType: 3
+    LoadingType: 0
+    FakeLoadingTime: 2
+    Backgrounds: []
+  - SceneName: Demo Scene 2
+    SceneAsset: {fileID: 102900000, guid: 5c8f76b8e5668ea41b280a20b7694b97, type: 3}
+    DisplayName: Demo Scene 2
+    Description: 
+    SkipType: 3
+    LoadingType: 0
+    FakeLoadingTime: 2
+    Backgrounds: []
+  - SceneName: FinalScene
+    SceneAsset: {fileID: 102900000, guid: ebec1b63ce6964d4998d40e889eb7896, type: 3}
+    DisplayName: FinalScene
+    Description: 
+    SkipType: 3
+    LoadingType: 0
+    FakeLoadingTime: 2
+    Backgrounds: []
   tipsList:
   - Create beautiful loading screens for improved your game
   - Easy to use and implement
