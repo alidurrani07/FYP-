@@ -64,8 +64,8 @@ namespace Invector.vShooter
         public Light lightOnShot;
         [Tooltip("Repairs muzzle particle materials at runtime so old particle assets do not render as opaque white squares in URP.")]
         public bool repairMuzzleParticles = true;
-        public Color muzzleFlashFallbackColor = new Color(1f, 0.88f, 0.18f, 0.65f);
-        public Color muzzleSmokeFallbackColor = new Color(1f, 0.8f, 0.15f, 0.45f);
+        public Color muzzleFlashFallbackColor = new Color(0.48f, 0.48f, 0.45f, 0.34f);
+        public Color muzzleSmokeFallbackColor = new Color(0.34f, 0.34f, 0.32f, 0.42f);
         [Range(0.05f, 5f)]
         public float muzzleParticleMaxSize = 0.85f;
         [SerializeField]
@@ -357,6 +357,12 @@ namespace Invector.vShooter
         #region Effects
         protected virtual void ShotEffect()
         {
+            bool useFinalSceneExMuzzle = ShouldUseFinalSceneExMuzzleEffect();
+            if (useFinalSceneExMuzzle)
+            {
+                StopAndClearEmitters();
+            }
+
             onShot.Invoke();
 
             StopCoroutine(LightOnShoot());
@@ -367,7 +373,15 @@ namespace Invector.vShooter
             }
 
             StartCoroutine(LightOnShoot(0.037f));
-            StartEmitters();
+            if (useFinalSceneExMuzzle)
+            {
+                StopAndClearEmitters();
+                StartFinalSceneExMuzzleEffect();
+            }
+            else
+            {
+                StartEmitters();
+            }
         }
 
         protected virtual void StopSound()
@@ -404,6 +418,57 @@ namespace Invector.vShooter
             }
         }
 
+        protected virtual bool ShouldUseFinalSceneExMuzzleEffect()
+        {
+            if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "FinalScene")
+            {
+                return false;
+            }
+
+            return emittShurykenParticle != null && emittShurykenParticle.Length > 0;
+        }
+
+        protected virtual void StartFinalSceneExMuzzleEffect()
+        {
+            bool spawned = false;
+            if (emittShurykenParticle != null)
+            {
+                foreach (ParticleSystem pe in emittShurykenParticle)
+                {
+                    if (!pe)
+                    {
+                        continue;
+                    }
+
+                    Transform particleTransform = pe.transform;
+                    global::FinalSceneRuntimeEffects.SpawnEx(particleTransform.position, particleTransform.rotation, 0.75f, 1.4f);
+                    spawned = true;
+                }
+            }
+
+            if (!spawned && muzzle)
+            {
+                global::FinalSceneRuntimeEffects.SpawnEx(muzzle.position, muzzle.rotation, 0.75f, 1.4f);
+            }
+        }
+
+        protected virtual void StopAndClearEmitters()
+        {
+            if (emittShurykenParticle == null)
+            {
+                return;
+            }
+
+            foreach (ParticleSystem pe in emittShurykenParticle)
+            {
+                if (pe)
+                {
+                    pe.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                    pe.Clear(true);
+                }
+            }
+        }
+
         protected virtual void ConfigureMuzzleParticle(ParticleSystem particle)
         {
             if (!repairMuzzleParticles || !particle || repairedMuzzleParticles.Contains(particle))
@@ -411,7 +476,9 @@ namespace Invector.vShooter
                 return;
             }
 
-            var isSmoke = particle.name.IndexOf("smoke", System.StringComparison.OrdinalIgnoreCase) >= 0;
+            var isSmoke = particle.name.IndexOf("smoke", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                          particle.name.IndexOf("muzzle", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                          particle.name.IndexOf("shot", System.StringComparison.OrdinalIgnoreCase) >= 0;
             var fallbackColor = isSmoke ? muzzleSmokeFallbackColor : muzzleFlashFallbackColor;
             var renderer = particle.GetComponent<ParticleSystemRenderer>();
 
@@ -431,7 +498,7 @@ namespace Invector.vShooter
             }
 
             var main = particle.main;
-            main.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 1f, 1f, Mathf.Clamp01(fallbackColor.a)));
+            main.startColor = new ParticleSystem.MinMaxGradient(fallbackColor);
             repairedMuzzleParticles.Add(particle);
         }
 
@@ -461,7 +528,7 @@ namespace Invector.vShooter
             SetMaterialColor(material, "_Color", color);
             SetMaterialColor(material, "_TintColor", color);
             SetMaterialColor(material, "_BaseColorAddSubDiff", color);
-            SetMaterialColor(material, "_EmissionColor", new Color(color.r, color.g, color.b, 1f));
+            SetMaterialColor(material, "_EmissionColor", isSmoke ? Color.black : new Color(color.r, color.g, color.b, Mathf.Clamp01(color.a)));
 
             SetMaterialFloat(material, "_Surface", 1f);
             SetMaterialFloat(material, "_Blend", isSmoke ? 0f : 2f);

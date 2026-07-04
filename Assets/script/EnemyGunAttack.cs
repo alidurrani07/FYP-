@@ -2,6 +2,7 @@ using System.Collections;
 using Invector;
 using UnityEngine;
 using UnityEngine.AI;
+using UnityEngine.SceneManagement;
 
 [DisallowMultipleComponent]
 public class EnemyGunAttack : MonoBehaviour
@@ -18,6 +19,13 @@ public class EnemyGunAttack : MonoBehaviour
     public float aimHeight = 1.35f;
     public bool requireLineOfSight = false;
     public LayerMask lineOfSightMask = ~0;
+    public bool useBurstCombatCycle;
+    public float shootBurstDuration = 5f;
+    public float restDuration = 3f;
+    public float restRepositionRadius = 8f;
+    public float restRepositionInterval = 1.2f;
+    public float minimumPlayerDistance = 10f;
+    public float preferredPlayerDistance = 15f;
 
     [Header("Visuals")]
     public Transform muzzle;
@@ -36,6 +44,10 @@ public class EnemyGunAttack : MonoBehaviour
     public GameObject bulletVisualPrefab;
     public float bulletVisualSpeed = 60f;
     public float bulletVisualLifetime = 2f;
+    public bool applyDamageOnBulletImpact;
+    public bool dodgeableProjectiles = true;
+    public float projectileCollisionRadius = 0.22f;
+    public LayerMask projectileHitMask = ~0;
     public ParticleSystem[] muzzleShotParticles;
     public GameObject muzzleParticlePrefab;
     public GameObject hitParticlePrefab;
@@ -60,9 +72,14 @@ public class EnemyGunAttack : MonoBehaviour
     private Material muzzleFlashMaterial;
     private float nextFireTime;
     private float lastShotTime = -999f;
+    private float combatPhaseEndTime;
+    private float nextRestRepositionTime;
     private float aimWeight;
     private bool playerInRange;
+    private bool restingFromShooting;
     private int lastIKFrame = -1;
+    private int nextShotId;
+    private int lastAppliedShotId;
 
     private void Awake()
     {
@@ -75,6 +92,7 @@ public class EnemyGunAttack : MonoBehaviour
     private void Start()
     {
         FindPlayer();
+        combatPhaseEndTime = Time.time + Mathf.Max(0.1f, shootBurstDuration);
 
         if (runtimeGun == null)
         {
@@ -110,10 +128,43 @@ public class EnemyGunAttack : MonoBehaviour
         }
 
         RotateToward(targetPoint);
+        MaintainMinimumPlayerDistance(distance);
+
+        UpdateCombatCycle();
+        if (restingFromShooting)
+        {
+            SetAnimatorBool("isShooting", false);
+            MoveDuringRest();
+            return;
+        }
 
         if (Time.time >= nextFireTime && CanShootTarget(targetPoint))
         {
             Shoot(targetPoint);
+        }
+    }
+
+    private void MaintainMinimumPlayerDistance(float currentDistance)
+    {
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh || player == null || currentDistance >= minimumPlayerDistance)
+        {
+            return;
+        }
+
+        SetAnimatorBool("isShooting", false);
+        Vector3 awayFromPlayer = transform.position - player.position;
+        awayFromPlayer.y = 0f;
+        if (awayFromPlayer.sqrMagnitude < 0.01f)
+        {
+            awayFromPlayer = -transform.forward;
+        }
+
+        Vector3 desired = player.position + awayFromPlayer.normalized * Mathf.Max(minimumPlayerDistance, preferredPlayerDistance);
+        NavMeshHit hit;
+        if (NavMesh.SamplePosition(desired, out hit, Mathf.Max(4f, preferredPlayerDistance), NavMesh.AllAreas))
+        {
+            agent.isStopped = false;
+            agent.SetDestination(hit.position);
         }
     }
 
@@ -317,6 +368,63 @@ public class EnemyGunAttack : MonoBehaviour
         return true;
     }
 
+    private void UpdateCombatCycle()
+    {
+        if (!useBurstCombatCycle)
+        {
+            restingFromShooting = false;
+            return;
+        }
+
+        if (Time.time < combatPhaseEndTime)
+        {
+            return;
+        }
+
+        restingFromShooting = !restingFromShooting;
+        float duration = restingFromShooting ? restDuration : shootBurstDuration;
+        combatPhaseEndTime = Time.time + Mathf.Max(0.1f, duration);
+        nextRestRepositionTime = 0f;
+        SetAnimatorBool("isShooting", false);
+    }
+
+    private void MoveDuringRest()
+    {
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh || player == null || Time.time < nextRestRepositionTime)
+        {
+            return;
+        }
+
+        nextRestRepositionTime = Time.time + Mathf.Max(0.25f, restRepositionInterval);
+
+        Vector3 awayFromPlayer = transform.position - player.position;
+        awayFromPlayer.y = 0f;
+        if (awayFromPlayer.sqrMagnitude < 0.01f)
+        {
+            awayFromPlayer = -transform.forward;
+        }
+
+        Vector3 side = Vector3.Cross(Vector3.up, awayFromPlayer.normalized);
+        if (Random.value < 0.5f)
+        {
+            side = -side;
+        }
+
+        Vector3 desired = transform.position + side * Random.Range(restRepositionRadius * 0.45f, restRepositionRadius);
+        desired += awayFromPlayer.normalized * Random.Range(2f, restRepositionRadius * 0.55f);
+        if (Vector3.Distance(desired, player.position) < minimumPlayerDistance)
+        {
+            desired = player.position + awayFromPlayer.normalized * Mathf.Max(minimumPlayerDistance, preferredPlayerDistance);
+        }
+
+        NavMeshHit hit;
+        if (NavMesh.SamplePosition(desired, out hit, restRepositionRadius, NavMesh.AllAreas))
+        {
+            agent.isStopped = false;
+            agent.SetDestination(hit.position);
+        }
+    }
+
     private void Shoot(Vector3 targetPoint)
     {
         nextFireTime = Time.time + fireInterval;
@@ -330,16 +438,130 @@ public class EnemyGunAttack : MonoBehaviour
             sender = transform,
             receiver = playerHealth.transform,
             hitPosition = targetPoint,
+            hitReaction = false,
+            activeRagdoll = false,
+            senselessTime = 0f,
+            recoil_id = -1,
+            reaction_id = -1,
+            ignoreDefense = true,
             force = (targetPoint - GetMuzzlePosition()).normalized * bulletDamage
         };
 
-        playerHealth.TakeDamage(damage);
-        PlayShotVisuals(targetPoint);
+        bool waitForBulletImpact = applyDamageOnBulletImpact && bulletVisualPrefab != null;
+        int shotId = ++nextShotId;
+        if (!waitForBulletImpact)
+        {
+            ApplyDamageToPlayer(damage, targetPoint, shotId);
+        }
+
+        Vector3 muzzlePosition = GetMuzzlePosition();
+        Vector3 shotDirection = targetPoint - muzzlePosition;
+        if (shotDirection.sqrMagnitude < 0.01f)
+        {
+            shotDirection = transform.forward;
+        }
+
+        PlayShotVisuals(targetPoint, waitForBulletImpact ? damage : null, shotId);
+
+        if (waitForBulletImpact && IsFinalSceneBossShot())
+        {
+            StartCoroutine(EnsureShotDamagesPlayerAfterTravel(new vDamage(damage), muzzlePosition, shotDirection.normalized, targetPoint, shotId));
+        }
 
         if (drawDebugRay)
         {
             Debug.DrawLine(GetMuzzlePosition(), targetPoint, Color.red, 0.15f);
         }
+    }
+
+    private void ApplyDamageToPlayer(vDamage damage)
+    {
+        ApplyDamageToPlayer(damage, GetTargetPoint(), 0);
+    }
+
+    private void ApplyDamageToPlayer(vDamage damage, Vector3 hitPosition, int shotId = 0)
+    {
+        if (damage == null)
+        {
+            return;
+        }
+
+        if (shotId > 0 && lastAppliedShotId == shotId)
+        {
+            return;
+        }
+
+        if (playerHealth == null || playerHealth.isDead || playerHealth.currentHealth <= 0f)
+        {
+            FindPlayer();
+        }
+
+        if (playerHealth == null || playerHealth.isDead || playerHealth.currentHealth <= 0f)
+        {
+            return;
+        }
+
+        damage.receiver = playerHealth.transform;
+        damage.hitPosition = hitPosition;
+        FinalScenePlayerDamageGate finalSceneGate = ResolveFinalSceneDamageGate();
+        if (finalSceneGate != null && finalSceneGate.ApplyApprovedBossDamage(damage, hitPosition))
+        {
+            if (shotId > 0)
+            {
+                lastAppliedShotId = shotId;
+            }
+            return;
+        }
+
+        if (IsFinalSceneBossShot() && ApplyDirectFinalSceneDamage(damage, shotId))
+        {
+            return;
+        }
+
+        playerHealth.TakeDamage(damage);
+        if (shotId > 0)
+        {
+            lastAppliedShotId = shotId;
+        }
+    }
+
+    private FinalScenePlayerDamageGate ResolveFinalSceneDamageGate()
+    {
+        if (playerHealth == null)
+        {
+            return null;
+        }
+
+        FinalScenePlayerDamageGate gate = playerHealth.GetComponent<FinalScenePlayerDamageGate>();
+        if (gate != null)
+        {
+            return gate;
+        }
+
+        gate = playerHealth.GetComponentInParent<FinalScenePlayerDamageGate>();
+        if (gate != null)
+        {
+            return gate;
+        }
+
+        return playerHealth.GetComponentInChildren<FinalScenePlayerDamageGate>(true);
+    }
+
+    private bool ApplyDirectFinalSceneDamage(vDamage damage, int shotId)
+    {
+        if (playerHealth == null || damage == null || damage.damageValue <= 0f)
+        {
+            return false;
+        }
+
+        float nextHealth = Mathf.Max(0f, playerHealth.currentHealth - damage.damageValue);
+        playerHealth.ChangeHealth(Mathf.RoundToInt(nextHealth));
+        if (shotId > 0)
+        {
+            lastAppliedShotId = shotId;
+        }
+
+        return true;
     }
 
     private Vector3 GetMuzzlePosition()
@@ -568,7 +790,7 @@ public class EnemyGunAttack : MonoBehaviour
         return basePosition;
     }
 
-    private void PlayShotVisuals(Vector3 targetPoint)
+    private void PlayShotVisuals(Vector3 targetPoint, vDamage pendingDamage = null, int shotId = 0)
     {
         Vector3 muzzlePosition = GetMuzzlePosition();
         Vector3 shotDirection = targetPoint - muzzlePosition;
@@ -593,6 +815,7 @@ public class EnemyGunAttack : MonoBehaviour
         if (muzzleParticlePrefab != null)
         {
             GameObject muzzleParticles = Instantiate(muzzleParticlePrefab, muzzlePosition, shotRotation);
+            PlayParticleObject(muzzleParticles);
             Destroy(muzzleParticles, 2f);
         }
 
@@ -600,7 +823,7 @@ public class EnemyGunAttack : MonoBehaviour
         {
             GameObject bullet = Instantiate(bulletVisualPrefab, muzzlePosition, shotRotation);
             bullet.SetActive(true);
-            StartCoroutine(MoveBulletVisual(bullet, targetPoint, shotDirection.normalized));
+            StartCoroutine(MoveBulletVisual(bullet, targetPoint, shotDirection.normalized, pendingDamage, shotId));
         }
         else if (hitParticlePrefab != null)
         {
@@ -608,17 +831,18 @@ public class EnemyGunAttack : MonoBehaviour
         }
     }
 
-    private IEnumerator MoveBulletVisual(GameObject bullet, Vector3 targetPoint, Vector3 fallbackDirection)
+    private IEnumerator MoveBulletVisual(GameObject bullet, Vector3 targetPoint, Vector3 fallbackDirection, vDamage pendingDamage, int shotId)
     {
         if (bullet == null)
         {
             yield break;
         }
 
+        Vector3 direction = fallbackDirection.sqrMagnitude > 0.01f ? fallbackDirection.normalized : bullet.transform.forward;
         Rigidbody bulletRigidbody = bullet.GetComponent<Rigidbody>();
-        if (bulletRigidbody != null)
+        if (!dodgeableProjectiles && bulletRigidbody != null && pendingDamage == null)
         {
-            bulletRigidbody.linearVelocity = fallbackDirection * bulletVisualSpeed;
+            bulletRigidbody.linearVelocity = direction * bulletVisualSpeed;
             Destroy(bullet, bulletVisualLifetime);
             yield break;
         }
@@ -626,19 +850,15 @@ public class EnemyGunAttack : MonoBehaviour
         float startTime = Time.time;
         while (bullet != null && Time.time - startTime < bulletVisualLifetime)
         {
-            Vector3 toTarget = targetPoint - bullet.transform.position;
             float step = bulletVisualSpeed * Time.deltaTime;
 
-            if (toTarget.magnitude <= step)
+            if (TryMoveProjectile(bullet, direction, step, pendingDamage, shotId))
             {
-                bullet.transform.position = targetPoint;
-                SpawnHitParticles(targetPoint, bullet.transform.rotation);
-                Destroy(bullet);
                 yield break;
             }
 
-            bullet.transform.position += toTarget.normalized * step;
-            bullet.transform.rotation = Quaternion.LookRotation(toTarget.normalized, Vector3.up);
+            bullet.transform.position += direction * step;
+            bullet.transform.rotation = Quaternion.LookRotation(direction, Vector3.up);
             yield return null;
         }
 
@@ -646,6 +866,181 @@ public class EnemyGunAttack : MonoBehaviour
         {
             Destroy(bullet);
         }
+    }
+
+    private bool TryMoveProjectile(GameObject bullet, Vector3 direction, float distance, vDamage pendingDamage, int shotId)
+    {
+        Vector3 origin = bullet.transform.position;
+        RaycastHit[] hits = Physics.SphereCastAll(
+            origin,
+            Mathf.Max(0.01f, projectileCollisionRadius),
+            direction,
+            Mathf.Max(0.01f, distance),
+            projectileHitMask,
+            QueryTriggerInteraction.Collide);
+
+        if (hits == null || hits.Length == 0)
+        {
+            return TryDamagePlayerByProjectileProximity(origin, direction, distance, pendingDamage, bullet, shotId);
+        }
+
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        for (int i = 0; i < hits.Length; i++)
+        {
+            RaycastHit hit = hits[i];
+            Collider hitCollider = hit.collider;
+            if (!IsValidProjectileHit(hitCollider, bullet.transform))
+            {
+                continue;
+            }
+
+            Vector3 hitPoint = hit.point == Vector3.zero ? origin + direction * hit.distance : hit.point;
+            bullet.transform.position = hitPoint;
+            SpawnHitParticles(hitPoint, bullet.transform.rotation);
+
+            if (IsPlayerCollider(hitCollider))
+            {
+                ApplyDamageToPlayer(pendingDamage, hitPoint, shotId);
+            }
+
+            Destroy(bullet);
+            return true;
+        }
+
+        return TryDamagePlayerByProjectileProximity(origin, direction, distance, pendingDamage, bullet, shotId);
+    }
+
+    private bool TryDamagePlayerByProjectileProximity(Vector3 origin, Vector3 direction, float distance, vDamage pendingDamage, GameObject bullet, int shotId)
+    {
+        if (pendingDamage == null || player == null || bullet == null)
+        {
+            return false;
+        }
+
+        Vector3 targetPoint = GetTargetPoint();
+        float alongSegment = Mathf.Clamp(Vector3.Dot(targetPoint - origin, direction), 0f, Mathf.Max(0.01f, distance));
+        Vector3 closestPoint = origin + direction * alongSegment;
+        float hitRadius = Mathf.Max(0.9f, projectileCollisionRadius + 0.55f);
+
+        if ((targetPoint - closestPoint).sqrMagnitude > hitRadius * hitRadius)
+        {
+            return false;
+        }
+
+        bullet.transform.position = closestPoint;
+        SpawnHitParticles(closestPoint, bullet.transform.rotation);
+        ApplyDamageToPlayer(pendingDamage, closestPoint, shotId);
+        Destroy(bullet);
+        return true;
+    }
+
+    private IEnumerator EnsureShotDamagesPlayerAfterTravel(vDamage damage, Vector3 origin, Vector3 direction, Vector3 initialTargetPoint, int shotId)
+    {
+        if (damage == null || shotId <= 0)
+        {
+            yield break;
+        }
+
+        float travelDistance = Vector3.Distance(origin, initialTargetPoint);
+        float travelDelay = Mathf.Clamp(travelDistance / Mathf.Max(1f, bulletVisualSpeed), 0.08f, 0.65f);
+        yield return new WaitForSeconds(travelDelay);
+
+        if (lastAppliedShotId == shotId)
+        {
+            yield break;
+        }
+
+        if (player == null || playerHealth == null || playerHealth.isDead || playerHealth.currentHealth <= 0f)
+        {
+            FindPlayer();
+        }
+
+        if (player == null || playerHealth == null || playerHealth.isDead || playerHealth.currentHealth <= 0f)
+        {
+            yield break;
+        }
+
+        Vector3 hitPoint = GetTargetPoint();
+        float maxTravel = Mathf.Max(travelDistance, bulletVisualSpeed * bulletVisualLifetime);
+        float distanceFromShot = DistanceToShotPath(hitPoint, origin, direction, maxTravel);
+        bool playerStillThreatened = distanceFromShot <= Mathf.Max(2.5f, projectileCollisionRadius + 2.1f);
+        bool playerInCombatRange = Vector3.Distance(transform.position, player.position) <= detectionRange;
+
+        if (!playerStillThreatened && !playerInCombatRange)
+        {
+            yield break;
+        }
+
+        SpawnHitParticles(hitPoint, Quaternion.LookRotation(direction.sqrMagnitude > 0.01f ? direction : transform.forward, Vector3.up));
+        ApplyDamageToPlayer(damage, hitPoint, shotId);
+    }
+
+    private static float DistanceToShotPath(Vector3 point, Vector3 origin, Vector3 direction, float maxDistance)
+    {
+        Vector3 safeDirection = direction.sqrMagnitude > 0.01f ? direction.normalized : Vector3.forward;
+        float alongPath = Mathf.Clamp(Vector3.Dot(point - origin, safeDirection), 0f, Mathf.Max(0.01f, maxDistance));
+        Vector3 closestPoint = origin + safeDirection * alongPath;
+        return Vector3.Distance(point, closestPoint);
+    }
+
+    private bool IsValidProjectileHit(Collider hitCollider, Transform bulletTransform)
+    {
+        if (hitCollider == null)
+        {
+            return false;
+        }
+
+        Transform hitTransform = hitCollider.transform;
+        if (hitTransform == null || hitTransform == bulletTransform || hitTransform.IsChildOf(bulletTransform))
+        {
+            return false;
+        }
+
+        if (hitTransform == transform || hitTransform.IsChildOf(transform))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool IsPlayerCollider(Collider hitCollider)
+    {
+        if (hitCollider == null || player == null)
+        {
+            return false;
+        }
+
+        Transform hitTransform = hitCollider.transform;
+        return hitTransform == player || hitTransform.IsChildOf(player) || player.IsChildOf(hitTransform);
+    }
+
+    private bool IsFinalSceneBossShot()
+    {
+        Scene scene = gameObject.scene.IsValid() ? gameObject.scene : SceneManager.GetActiveScene();
+        if (scene.name != "FinalScene")
+        {
+            return false;
+        }
+
+        Transform current = transform;
+        while (current != null)
+        {
+            if (IsFinalEnemyName(current.name))
+            {
+                return true;
+            }
+
+            current = current.parent;
+        }
+
+        return GetComponent<FinalSceneBossFightDirector>() != null || GetComponentInParent<FinalSceneBossFightDirector>() != null;
+    }
+
+    private static bool IsFinalEnemyName(string objectName)
+    {
+        return !string.IsNullOrEmpty(objectName) &&
+               (objectName.Contains("Rhea Malik") || objectName.Contains("FinalEnemy") || objectName.Contains("FInalEnemy"));
     }
 
     private void SpawnHitParticles(Vector3 position, Quaternion rotation)
@@ -656,7 +1051,39 @@ public class EnemyGunAttack : MonoBehaviour
         }
 
         GameObject hitParticles = Instantiate(hitParticlePrefab, position, rotation);
+        PlayParticleObject(hitParticles);
         Destroy(hitParticles, 2f);
+    }
+
+    private void PlayParticleObject(GameObject particleObject)
+    {
+        if (particleObject == null)
+        {
+            return;
+        }
+
+        GameObject hitParticles = particleObject;
+        hitParticles.SetActive(true);
+
+        ParticleSystem[] particles = hitParticles.GetComponentsInChildren<ParticleSystem>(true);
+        for (int i = 0; i < particles.Length; i++)
+        {
+            particles[i].Clear(true);
+            particles[i].Play(true);
+        }
+
+        Animator[] animators = hitParticles.GetComponentsInChildren<Animator>(true);
+        for (int i = 0; i < animators.Length; i++)
+        {
+            animators[i].speed = 1f;
+            animators[i].Play(0, 0, 0f);
+        }
+
+        AudioSource[] audioSources = hitParticles.GetComponentsInChildren<AudioSource>(true);
+        for (int i = 0; i < audioSources.Length; i++)
+        {
+            audioSources[i].Play();
+        }
     }
 
     private GameObject BuildFallbackGun(Transform parent)
