@@ -149,11 +149,11 @@ public class ShootTriggerUI : MonoBehaviour
 
         if (currentScene == "ArmyScene")
         {
-            SceneManager.LoadScene("Demo Scene 1");
+            SceneManager.LoadScene("Demo Scene 2");
         }
         else if (currentScene == "RebelScene")
         {
-            SceneManager.LoadScene("Demo Scene 2");
+            SceneManager.LoadScene("Demo Scene 1");
         }
         else
         {

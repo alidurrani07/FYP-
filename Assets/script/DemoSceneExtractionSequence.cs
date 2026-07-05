@@ -12,13 +12,15 @@ using UnityEngine.UI;
 [DisallowMultipleComponent]
 public class DemoSceneExtractionSequence : MonoBehaviour
 {
-    private const string SceneName = "Demo Scene 1";
+    private const string DemoSceneOneName = "Demo Scene 1";
+    private const string DemoSceneTwoName = "Demo Scene 2";
     private const string ExitTriggerName = "exitTrigger";
     private const string ExitCamera01Name = "exitCamera01";
     private const string ExitCamera02Name = "exitCamera02";
     private const string CompanionTriggerName = "companionTrigger";
     private const string TruckName = "Truck";
     private const string FinalSceneName = "FinalScene";
+    private const string FinalSceneOneName = "FinalScene 1";
     private const string ExplosionSoundResourceName = "explosion";
 
     [Header("Timing")]
@@ -68,7 +70,7 @@ public class DemoSceneExtractionSequence : MonoBehaviour
 
     private void Awake()
     {
-        if (gameObject.scene.name != SceneName)
+        if (!IsDemoScene(gameObject.scene.name))
             return;
 
         mainCamera = Camera.main;
@@ -79,7 +81,7 @@ public class DemoSceneExtractionSequence : MonoBehaviour
     public static DemoSceneExtractionSequence EnsureForActiveScene()
     {
         Scene scene = SceneManager.GetActiveScene();
-        if (!scene.IsValid() || scene.name != SceneName)
+        if (!scene.IsValid() || !IsDemoScene(scene.name))
             return null;
 
         DemoSceneExtractionSequence existing = FindSceneObjectOfType<DemoSceneExtractionSequence>(scene);
@@ -93,7 +95,7 @@ public class DemoSceneExtractionSequence : MonoBehaviour
 
     private void Start()
     {
-        if (gameObject.scene.name != SceneName)
+        if (!IsDemoScene(gameObject.scene.name))
             return;
 
         PrepareExitObjective(FindObjectOfType<DemoSceneBombMission>());
@@ -221,7 +223,17 @@ public class DemoSceneExtractionSequence : MonoBehaviour
         if (letterbox != null)
             Destroy(letterbox.gameObject);
 
-        SceneManager.LoadScene(FinalSceneName);
+        SceneManager.LoadScene(GetFinalSceneName(SceneManager.GetActiveScene().name));
+    }
+
+    private static bool IsDemoScene(string sceneName)
+    {
+        return sceneName == DemoSceneOneName || sceneName == DemoSceneTwoName;
+    }
+
+    private static string GetFinalSceneName(string demoSceneName)
+    {
+        return demoSceneName == DemoSceneTwoName ? FinalSceneOneName : FinalSceneName;
     }
 
     private void ResolveSceneReferences()
