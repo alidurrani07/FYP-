@@ -1018,7 +1018,7 @@ public class EnemyGunAttack : MonoBehaviour
     private bool IsFinalSceneBossShot()
     {
         Scene scene = gameObject.scene.IsValid() ? gameObject.scene : SceneManager.GetActiveScene();
-        if (scene.name != "FinalScene")
+        if (scene.name != "FinalScene" && scene.name != "FinalScene 1")
         {
             return false;
         }

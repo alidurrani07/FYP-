@@ -420,7 +420,8 @@ namespace Invector.vShooter
 
         protected virtual bool ShouldUseFinalSceneExMuzzleEffect()
         {
-            if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "FinalScene")
+            string activeSceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            if (activeSceneName != "FinalScene" && activeSceneName != "FinalScene 1")
             {
                 return false;
             }
