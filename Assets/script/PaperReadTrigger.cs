@@ -21,10 +21,8 @@ public class PaperReadTrigger : MonoBehaviour
     public bool buildPolishedRuntimeUI = true;
     public float revealDelay = 1.1f;
     public bool showCursorForChoice = true;
-    public KeyCode interactKey = KeyCode.E;
 
     private bool triggered = false;
-    private bool playerInRange = false;
     private bool canChoose = false;
     private Sprite parchmentSprite;
     private Sprite woodSprite;
@@ -62,12 +60,6 @@ public class PaperReadTrigger : MonoBehaviour
 
     private void Update()
     {
-        if (playerInRange && !triggered && Input.GetKeyDown(interactKey))
-        {
-            triggered = true;
-            StartCoroutine(Sequence());
-        }
-
         if (!canChoose) return;
 
         if (Input.GetKeyDown(KeyCode.A))
@@ -83,17 +75,10 @@ public class PaperReadTrigger : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag("Player"))
+        if (other.CompareTag("Player") && !triggered)
         {
-            playerInRange = true;
-        }
-    }
-
-    private void OnTriggerExit(Collider other)
-    {
-        if (other.CompareTag("Player"))
-        {
-            playerInRange = false;
+            triggered = true;
+            StartCoroutine(Sequence());
         }
     }
 
