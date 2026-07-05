@@ -17,6 +17,7 @@ using UnityEngine.SceneManagement;
 public class AIWorldRuntimeFix : MonoBehaviour
 {
     private const string DemoSceneName = "Demo Scene 1";
+    private const string LevelOneSceneName = "Level-1";
     private const int DemoRifleItemId = 11;
     private const float EnemyShootRange = 45f;
     private const float EnemyBurstCooldown = 6f;
@@ -60,6 +61,7 @@ public class AIWorldRuntimeFix : MonoBehaviour
         ConfigurePlayerCharacters();
         ConfigureSimpleMeleeAI();
         ConfigureCompleteEnemies();
+        ConfigureLevelOneGroundFollowers();
         if (IsDemoScene1())
         {
             ConfigureEnemyPassThrough();
@@ -90,6 +92,7 @@ public class AIWorldRuntimeFix : MonoBehaviour
         ConfigurePlayerCharacters();
         ConfigureSimpleMeleeAI();
         ConfigureCompleteEnemies();
+        ConfigureLevelOneGroundFollowers();
         if (IsDemoScene1())
         {
             ConfigureEnemyPassThrough();
@@ -250,6 +253,50 @@ public class AIWorldRuntimeFix : MonoBehaviour
             ConfigureShooterAgent(enemy.GetComponent<NavMeshAgent>());
             EnsureBodyDamageReceivers(enemy.gameObject, "Enemy", false);
             EnsureDeathGrounder(enemy.gameObject);
+        }
+    }
+
+    private void ConfigureLevelOneGroundFollowers()
+    {
+        if (SceneManager.GetActiveScene().name != LevelOneSceneName)
+        {
+            return;
+        }
+
+        SimpleAI[] soldiers = FindObjectsOfType<SimpleAI>(true);
+        for (int i = 0; i < soldiers.Length; i++)
+        {
+            if (soldiers[i] != null)
+            {
+                EnsureTerrainFollower(soldiers[i].gameObject);
+            }
+        }
+
+        EnemyPatrol[] patrols = FindObjectsOfType<EnemyPatrol>(true);
+        for (int i = 0; i < patrols.Length; i++)
+        {
+            if (patrols[i] != null)
+            {
+                EnsureTerrainFollower(patrols[i].gameObject);
+            }
+        }
+
+        EnemyGunAttack[] gunEnemies = FindObjectsOfType<EnemyGunAttack>(true);
+        for (int i = 0; i < gunEnemies.Length; i++)
+        {
+            if (gunEnemies[i] != null)
+            {
+                EnsureTerrainFollower(gunEnemies[i].gameObject);
+            }
+        }
+
+        CompleteEnemyAI[] completeEnemies = FindObjectsOfType<CompleteEnemyAI>(true);
+        for (int i = 0; i < completeEnemies.Length; i++)
+        {
+            if (completeEnemies[i] != null)
+            {
+                EnsureTerrainFollower(completeEnemies[i].gameObject);
+            }
         }
     }
 
@@ -834,6 +881,25 @@ public class AIWorldRuntimeFix : MonoBehaviour
         grounder.rayDistance = 8f;
         grounder.groundOffset = 0.02f;
         grounder.settleDuration = 1f;
+    }
+
+    private void EnsureTerrainFollower(GameObject target)
+    {
+        if (target == null || target.CompareTag("Player"))
+        {
+            return;
+        }
+
+        TerrainFollower follower = target.GetComponent<TerrainFollower>();
+        if (follower == null)
+        {
+            follower = target.AddComponent<TerrainFollower>();
+        }
+
+        follower.rayDistance = 18f;
+        follower.heightOffset = 0.03f;
+        follower.smoothSpeed = 35f;
+        follower.groundMask = ~0;
     }
 
     private void EnsureCompanionRuntimeSupport(vSimpleMeleeAI_Companion companion)
