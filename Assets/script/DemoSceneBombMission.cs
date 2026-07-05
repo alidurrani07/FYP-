@@ -9,7 +9,8 @@ using UnityEngine.InputSystem;
 
 public class DemoSceneBombMission : MonoBehaviour
 {
-    private const string SceneName = "Demo Scene 1";
+    private const string DemoSceneOneName = "Demo Scene 1";
+    private const string DemoSceneTwoName = "Demo Scene 2";
     private const string MissionTextObjectName = "missionUi";
     private const string BombTemplateName = "Bomb";
     private const float HoldSeconds = 2.25f;
@@ -846,7 +847,7 @@ public class DemoSceneBombMission : MonoBehaviour
 
         private void EnsureMissionForScene(Scene scene)
         {
-            if (scene.name != SceneName)
+            if (!IsDemoScene(scene.name))
                 return;
 
             if (FindObjectOfType<DemoSceneBombMission>() != null)
@@ -854,6 +855,11 @@ public class DemoSceneBombMission : MonoBehaviour
 
             GameObject missionObject = new GameObject("DemoSceneBombMission");
             missionObject.AddComponent<DemoSceneBombMission>();
+        }
+
+        private static bool IsDemoScene(string sceneName)
+        {
+            return sceneName == DemoSceneOneName || sceneName == DemoSceneTwoName;
         }
     }
 }

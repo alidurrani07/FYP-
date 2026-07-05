@@ -13,7 +13,9 @@ using UnityEngine.UI;
 public class FinalSceneBossBootstrap : MonoBehaviour
 {
     private const string FinalSceneName = "FinalScene";
+    private const string FinalSceneOneName = "FinalScene 1";
     private const string BossObjectName = "Rhea Malik";
+    private const string FinalSceneOneBossObjectName = "Lt. Marcus Briggs";
     private const string PlayerObjectName = "vShooterController_Swat";
     private const string PlayerObjectTag = "Player";
     private const string CutsceneCameraName = "Camera";
@@ -62,7 +64,7 @@ public class FinalSceneBossBootstrap : MonoBehaviour
 
     private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        if (!scene.IsValid() || scene.name != FinalSceneName)
+        if (!scene.IsValid() || !IsFinalScene(scene.name))
         {
             return;
         }
@@ -88,7 +90,7 @@ public class FinalSceneBossBootstrap : MonoBehaviour
 
     private void Initialize(Scene scene)
     {
-        if (scene.name != FinalSceneName || hasStarted)
+        if (!IsFinalScene(scene.name) || hasStarted)
         {
             return;
         }
@@ -113,7 +115,7 @@ public class FinalSceneBossBootstrap : MonoBehaviour
         }
 
         Scene scene = gameObject.scene.IsValid() ? gameObject.scene : SceneManager.GetActiveScene();
-        if (scene.name != FinalSceneName)
+        if (!IsFinalScene(scene.name))
         {
             return;
         }
@@ -133,6 +135,52 @@ public class FinalSceneBossBootstrap : MonoBehaviour
         {
             HandoffToGameplay(scene);
         }
+    }
+
+    private static bool IsFinalScene(string sceneName)
+    {
+        return sceneName == FinalSceneName || sceneName == FinalSceneOneName;
+    }
+
+    private static Transform FindBossTransform(Scene scene)
+    {
+        Transform boss = null;
+        if (scene.name == FinalSceneOneName)
+        {
+            boss = FindSceneTransform(scene, FinalSceneOneBossObjectName);
+            if (boss != null)
+            {
+                return boss;
+            }
+        }
+
+        boss = FindSceneTransform(scene, BossObjectName);
+        if (boss != null)
+        {
+            return boss;
+        }
+
+        return FindSceneTransform(scene, FinalSceneOneBossObjectName);
+    }
+
+    private static string GetBossDisplayName(Transform boss)
+    {
+        if (boss == null || string.IsNullOrEmpty(boss.name))
+        {
+            return BossObjectName;
+        }
+
+        if (boss.name.Contains(FinalSceneOneBossObjectName))
+        {
+            return FinalSceneOneBossObjectName;
+        }
+
+        if (boss.name.Contains(BossObjectName))
+        {
+            return BossObjectName;
+        }
+
+        return boss.name;
     }
 
     private void ResolveReferences(Scene scene)
@@ -157,13 +205,14 @@ public class FinalSceneBossBootstrap : MonoBehaviour
 
     private void ConfigureBoss(Scene scene)
     {
-        Transform boss = FindSceneTransform(scene, BossObjectName);
+        Transform boss = FindBossTransform(scene);
         if (boss == null)
         {
-            Debug.LogWarning("FinalSceneBossBootstrap could not find Rhea Malik.");
+            Debug.LogWarning("FinalSceneBossBootstrap could not find Rhea Malik or Lt. Marcus Briggs.");
             return;
         }
 
+        string bossDisplayName = GetBossDisplayName(boss);
         vHealthController health = boss.GetComponent<vHealthController>();
         if (health == null)
         {
@@ -188,7 +237,7 @@ public class FinalSceneBossBootstrap : MonoBehaviour
         ConfigureBossMeleeDamage(boss);
         ConfigureBossGun(boss);
         EnsurePlayerDamageGate(scene, boss);
-        bossHealthBar = EnsureBossHealthBar(scene, boss, health);
+        bossHealthBar = EnsureBossHealthBar(scene, boss, health, bossDisplayName);
         bossHealthBar.SetVisibleAllowed(false);
         bossFightDirector = EnsureBossFightDirector(scene, boss, health);
         bossFightDirector.SetFightActive(false);
@@ -753,7 +802,7 @@ public class FinalSceneBossBootstrap : MonoBehaviour
         playerDamageGate.SetFightActive(hasHandedOffToGameplay);
     }
 
-    private static FinalSceneBossHealthBar EnsureBossHealthBar(Scene scene, Transform boss, vHealthController health)
+    private static FinalSceneBossHealthBar EnsureBossHealthBar(Scene scene, Transform boss, vHealthController health, string bossDisplayName)
     {
         FinalSceneBossHealthBar existing = boss != null ? boss.GetComponentInChildren<FinalSceneBossHealthBar>(true) : null;
         if (existing == null)
@@ -763,14 +812,14 @@ public class FinalSceneBossBootstrap : MonoBehaviour
 
         if (existing != null)
         {
-            existing.Bind(boss, health, BossObjectName);
+            existing.Bind(boss, health, bossDisplayName);
             return existing;
         }
 
-        GameObject barObject = new GameObject("Rhea Malik Boss Health Bar");
+        GameObject barObject = new GameObject(bossDisplayName + " Boss Health Bar");
         SceneManager.MoveGameObjectToScene(barObject, scene);
         FinalSceneBossHealthBar healthBar = barObject.AddComponent<FinalSceneBossHealthBar>();
-        healthBar.Bind(boss, health, BossObjectName);
+        healthBar.Bind(boss, health, bossDisplayName);
         return healthBar;
     }
 
@@ -1232,7 +1281,7 @@ public class FinalSceneBossFightDirector : MonoBehaviour
         for (int i = 0; i < offsets.Length; i++)
         {
             GameObject guard = Instantiate(boss.gameObject, boss.position + offsets[i], boss.rotation);
-            guard.name = "Rhea Malik Guard " + (i + 1);
+            guard.name = GetBossDisplayName() + " Guard " + (i + 1);
             guard.transform.localScale = boss.localScale * 0.88f;
 
             FinalSceneBossFightDirector clonedDirector = guard.GetComponent<FinalSceneBossFightDirector>();
@@ -1519,7 +1568,7 @@ public class FinalSceneBossFightDirector : MonoBehaviour
         titleRect.offsetMin = Vector2.zero;
         titleRect.offsetMax = Vector2.zero;
 
-        TMP_Text subtitle = CreateUiText("Subtitle", panelObject.transform, "Rhea Malik defeated", 28, Color.white);
+        TMP_Text subtitle = CreateUiText("Subtitle", panelObject.transform, GetBossDisplayName() + " defeated", 28, Color.white);
         RectTransform subtitleRect = subtitle.GetComponent<RectTransform>();
         subtitleRect.anchorMin = new Vector2(0.2f, 0.45f);
         subtitleRect.anchorMax = new Vector2(0.8f, 0.52f);
@@ -1540,6 +1589,26 @@ public class FinalSceneBossFightDirector : MonoBehaviour
         uiText.raycastTarget = false;
         uiText.enableWordWrapping = false;
         return uiText;
+    }
+
+    private string GetBossDisplayName()
+    {
+        if (boss == null || string.IsNullOrEmpty(boss.name))
+        {
+            return "Rhea Malik";
+        }
+
+        if (boss.name.Contains("Lt. Marcus Briggs"))
+        {
+            return "Lt. Marcus Briggs";
+        }
+
+        if (boss.name.Contains("Rhea Malik"))
+        {
+            return "Rhea Malik";
+        }
+
+        return boss.name;
     }
 
     private Transform FindPlayer()
@@ -1784,7 +1853,7 @@ public class FinalScenePlayerDamageGate : MonoBehaviour
     private static bool IsFinalEnemyName(string objectName)
     {
         return !string.IsNullOrEmpty(objectName) &&
-               (objectName.Contains("Rhea Malik") || objectName.Contains("FInalEnemy") || objectName.Contains("FinalEnemy"));
+               (objectName.Contains("Rhea Malik") || objectName.Contains("Lt. Marcus Briggs") || objectName.Contains("FInalEnemy") || objectName.Contains("FinalEnemy"));
     }
 }
 
