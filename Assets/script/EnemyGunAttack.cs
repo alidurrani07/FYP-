@@ -39,7 +39,7 @@ public class EnemyGunAttack : MonoBehaviour
     public float recoilDistance = 0.12f;
     public float recoilDuration = 0.12f;
     public float muzzleFlashDuration = 0.08f;
-    public bool hideGunWhileMoving = true;
+    public bool hideGunWhileMoving = false;
     public float hideGunMoveSpeed = 0.25f;
     public GameObject bulletVisualPrefab;
     public float bulletVisualSpeed = 60f;
@@ -118,7 +118,7 @@ public class EnemyGunAttack : MonoBehaviour
 
         Vector3 targetPoint = GetTargetPoint();
         float distance = Vector3.Distance(transform.position, player.position);
-        playerInRange = distance <= detectionRange || distance <= closeRange;
+        playerInRange = distance <= detectionRange;
         aimWeight = Mathf.MoveTowards(aimWeight, playerInRange ? 1f : 0f, Time.deltaTime * 5f);
 
         if (!playerInRange)
@@ -338,6 +338,11 @@ public class EnemyGunAttack : MonoBehaviour
 
     private bool CanShootTarget(Vector3 targetPoint)
     {
+        if (player == null || Vector3.Distance(transform.position, player.position) > detectionRange)
+        {
+            return false;
+        }
+
         if (!requireLineOfSight)
         {
             return true;
@@ -345,6 +350,11 @@ public class EnemyGunAttack : MonoBehaviour
 
         Vector3 origin = GetMuzzlePosition();
         Vector3 direction = targetPoint - origin;
+        if (direction.sqrMagnitude < 0.01f)
+        {
+            return false;
+        }
+
         RaycastHit[] hits = Physics.RaycastAll(origin, direction.normalized, direction.magnitude, lineOfSightMask, QueryTriggerInteraction.Ignore);
 
         if (hits.Length == 0)

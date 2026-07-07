@@ -46,7 +46,7 @@ NavMeshAgent:
   m_Enabled: 1
   m_AgentTypeID: 0
   m_Radius: 0.45
-  m_Speed: 1
+  m_Speed: 1.15
   m_Acceleration: 12
   avoidancePriority: 50
   m_AngularSpeed: 300
@@ -149,8 +149,8 @@ MonoBehaviour:
   patrolTurnSpeed: 8
   combatTurnSpeed: 28
   patrolPoints: []
-  patrolSpeed: 2
-  chaseSpeed: 3.5
+  patrolSpeed: 1.15
+  chaseSpeed: 2.2
   patrolPointTolerance: 0.45
   fallbackPatrolRadius: 8
   fallbackPatrolWait: 1.5

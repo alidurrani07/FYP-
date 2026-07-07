@@ -37,7 +37,7 @@ public class CompleteEnemyAI : MonoBehaviour
 
     [Header("Patrol")]
     public Transform[] patrolPoints;
-    public float patrolSpeed = 2f;
+    public float patrolSpeed = 1.15f;
     public float chaseSpeed = 3.5f;
     public float patrolPointTolerance = 0.45f;
     public float fallbackPatrolRadius = 8f;
@@ -68,6 +68,9 @@ public class CompleteEnemyAI : MonoBehaviour
     public bool createMissingGripAndMuzzle = true;
     public bool useLeftHandIK = true;
     public bool useLookAtIK = true;
+    [Range(0f, 1f)] public float patrolGripIKWeight = 0.75f;
+    [Range(0f, 1f)] public float combatGripIKWeight = 1f;
+    public float ikBlendSpeed = 8f;
 
     [Header("Shot Visuals")]
     public GameObject bulletVisualPrefab;
@@ -147,6 +150,8 @@ public class CompleteEnemyAI : MonoBehaviour
     private Quaternion visualBaseLocalRotation;
     private float staggerEndTime;
     private Coroutine deathGroundRoutine;
+    private float currentGripIKWeight;
+    private float currentLookIKWeight;
 
     private void Awake()
     {
@@ -202,6 +207,7 @@ public class CompleteEnemyAI : MonoBehaviour
 
         ResolvePlayer();
         UpdateAnimatorSpeed();
+        UpdateGunIKWeights();
         UpdateTemporaryHealthBar();
         UpdateHitStagger();
 
@@ -240,19 +246,18 @@ public class CompleteEnemyAI : MonoBehaviour
             return;
         }
 
-        float aimWeight = IsCombatState() ? 1f : 0f;
         Vector3 targetPoint = GetTargetPoint();
 
         if (useLookAtIK)
         {
-            animator.SetLookAtWeight(aimWeight, 0.2f, 0.8f, 0.9f, 0.5f);
+            animator.SetLookAtWeight(currentLookIKWeight, 0.2f, 0.8f, 0.9f, 0.5f);
             animator.SetLookAtPosition(targetPoint);
         }
 
         if (useLeftHandIK && leftGrip != null)
         {
-            animator.SetIKPositionWeight(AvatarIKGoal.LeftHand, aimWeight);
-            animator.SetIKRotationWeight(AvatarIKGoal.LeftHand, aimWeight);
+            animator.SetIKPositionWeight(AvatarIKGoal.LeftHand, currentGripIKWeight);
+            animator.SetIKRotationWeight(AvatarIKGoal.LeftHand, currentGripIKWeight);
             animator.SetIKPosition(AvatarIKGoal.LeftHand, leftGrip.position);
             animator.SetIKRotation(AvatarIKGoal.LeftHand, leftGrip.rotation);
         }
@@ -752,7 +757,7 @@ public class CompleteEnemyAI : MonoBehaviour
             return false;
         }
 
-        if (playerHealth != null && playerHealth.isDead)
+        if (playerHealth != null && (playerHealth.isDead || playerHealth.currentHealth <= 0f))
         {
             return false;
         }
@@ -780,6 +785,11 @@ public class CompleteEnemyAI : MonoBehaviour
         Vector3 origin = GetMuzzlePosition();
         Vector3 targetPoint = GetTargetPoint();
         Vector3 direction = targetPoint - origin;
+        if (direction.sqrMagnitude < 0.01f)
+        {
+            return false;
+        }
+
         RaycastHit[] hits = Physics.RaycastAll(origin, direction.normalized, direction.magnitude, lineOfSightMask, QueryTriggerInteraction.Ignore);
         if (hits.Length == 0)
         {
@@ -813,6 +823,12 @@ public class CompleteEnemyAI : MonoBehaviour
 
     private void FireShot(Vector3 targetPoint)
     {
+        if (!CanAttackPlayer())
+        {
+            SetShooting(false);
+            return;
+        }
+
         SetTrigger(shootTrigger);
 
         if (playerHealth != null && !playerHealth.isDead)
@@ -1079,7 +1095,29 @@ public class CompleteEnemyAI : MonoBehaviour
         }
 
         float speed = agent != null && agent.enabled ? agent.velocity.magnitude : 0f;
-        animator.SetFloat(speedParameter, speed);
+        animator.SetFloat(speedParameter, speed, 0.12f, Time.deltaTime);
+    }
+
+    private void UpdateGunIKWeights()
+    {
+        if (animator == null || !animator.isHuman || currentState == EnemyState.Dead)
+        {
+            currentGripIKWeight = Mathf.MoveTowards(currentGripIKWeight, 0f, Time.deltaTime * Mathf.Max(0.1f, ikBlendSpeed));
+            currentLookIKWeight = Mathf.MoveTowards(currentLookIKWeight, 0f, Time.deltaTime * Mathf.Max(0.1f, ikBlendSpeed));
+            return;
+        }
+
+        float targetGripWeight = runtimeGun != null ? patrolGripIKWeight : 0f;
+        float targetLookWeight = 0f;
+        if (IsCombatState())
+        {
+            targetGripWeight = runtimeGun != null ? combatGripIKWeight : 0f;
+            targetLookWeight = 1f;
+        }
+
+        float blendStep = Time.deltaTime * Mathf.Max(0.1f, ikBlendSpeed);
+        currentGripIKWeight = Mathf.MoveTowards(currentGripIKWeight, targetGripWeight, blendStep);
+        currentLookIKWeight = Mathf.MoveTowards(currentLookIKWeight, targetLookWeight, blendStep);
     }
 
     private void SetShooting(bool value)

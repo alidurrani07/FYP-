@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using Invector.vCharacterController;
+using Invector.vCamera;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -11,10 +12,18 @@ public class LevelOneStartupCutscene : MonoBehaviour
     private const string SceneName = "Level-1";
     private const string CameraOneName = "cutsceneCamera01";
     private const string CameraTwoName = "cutSceneCamera02";
+    private const string PlaneName = "plane";
+    private const string LandPointName = "landPoint";
+    private const string IdleParachuteName = "IdleP";
+    private const string PlaneCameraName = "startPlaneCamera";
 
     private const float CameraOneDuration = 10f;
     private const float CharacterDelay = 0.028f;
     private const float CameraTwoFovPush = 26f;
+    private const float PlaneFlightDuration = 6f;
+    private const float ParachuteFallDuration = 7f;
+    private const float LandingFadeDuration = 2f;
+    private const float PlanePitch = -88f;
     private const string BriefingVoiceResource = "i";
 
     private const string SpeakerName = "AAREN VALE";
@@ -25,7 +34,25 @@ public class LevelOneStartupCutscene : MonoBehaviour
 
     private Camera cameraOne;
     private Camera cameraTwo;
+    private Camera planeCamera;
+    private GameObject planeObject;
+    private GameObject idleParachute;
+    private Transform landPoint;
+    private Transform playerRoot;
+    private vThirdPersonCamera invectorCameraRig;
+    private RebelGTAThirdPersonCamera gtaCameraDriver;
+    private Camera gameplayRenderCamera;
+    private Transform cameraRigTransform;
+    private Transform gameplayCameraTransform;
+    private Vector3 cameraRigLocalPosition;
+    private Quaternion cameraRigLocalRotation;
+    private Vector3 cameraRigLocalScale;
+    private Vector3 gameplayCameraLocalPosition;
+    private Quaternion gameplayCameraLocalRotation;
+    private Vector3 gameplayCameraLocalScale;
+    private bool gtaCameraDriverWasEnabled;
     private CanvasGroup overlayGroup;
+    private CanvasGroup blackFadeGroup;
     private TextMeshProUGUI dialogueText;
     private TextMeshProUGUI statusText;
     private AudioSource briefingVoiceSource;
@@ -76,6 +103,11 @@ public class LevelOneStartupCutscene : MonoBehaviour
 
         cameraOne = FindSceneCamera(scene, CameraOneName);
         cameraTwo = FindSceneCamera(scene, CameraTwoName);
+        planeCamera = FindSceneCamera(scene, PlaneCameraName);
+        planeObject = FindSceneGameObject(scene, PlaneName);
+        idleParachute = FindSceneGameObject(scene, IdleParachuteName);
+        GameObject landPointObject = FindSceneGameObject(scene, LandPointName);
+        landPoint = landPointObject != null ? landPointObject.transform : null;
         briefingVoiceClip = Resources.Load<AudioClip>(BriefingVoiceResource);
 
         if (cameraOne == null || cameraTwo == null)
@@ -92,8 +124,11 @@ public class LevelOneStartupCutscene : MonoBehaviour
     {
         isPlaying = true;
         CacheSceneStates(scene);
+        CacheGameplayRig(scene);
         LockPlayerInput(true);
         SetPlayerObjectsActive(false);
+        SetGameplayCameraRigsActive(scene, false);
+        SetObjectActive(idleParachute, false);
         BuildOverlay();
 
         float cameraTwoStartFov = cameraTwo.fieldOfView;
@@ -115,17 +150,175 @@ public class LevelOneStartupCutscene : MonoBehaviour
         yield return FadeOverlay(0f, 0.45f);
 
         cameraTwo.fieldOfView = cameraTwoStartFov;
-        RestoreSceneStates();
-        SetPlayerObjectsActive(true);
-        SetCutsceneCameraActive(cameraOne, false);
-        SetCutsceneCameraActive(cameraTwo, false);
-        LockPlayerInput(false);
-        UnlockAllPlayerInputsInScene(scene);
         CleanupVoiceSource();
         Destroy(overlayGroup.gameObject);
+        overlayGroup = null;
+
+        yield return PlayPlaneLandingSequence(scene);
+
+        MovePlayersToLandPoint();
+        SetPlayerObjectsActive(true);
+        Camera gameplayCamera = RestoreGameplayCamera(scene);
+        ResetPlayerRuntimeState(scene, gameplayCamera);
+        SetCutsceneCameraActive(cameraOne, false);
+        SetCutsceneCameraActive(cameraTwo, false);
+        SetCutsceneCameraActive(planeCamera, false);
+        DisableSceneCamerasExcept(scene, gameplayCamera);
+        SetObjectActive(idleParachute, false);
+        LockPlayerInput(false);
+        UnlockAllPlayerInputsInScene(scene);
+        yield return new WaitForEndOfFrame();
+        CleanupBlackFade();
         DestroyCutsceneCameras();
         isPlaying = false;
         Destroy(gameObject);
+    }
+
+    private IEnumerator PlayPlaneLandingSequence(Scene scene)
+    {
+        if (planeObject == null || idleParachute == null || landPoint == null)
+        {
+            Debug.LogWarning("LevelOneStartupCutscene landing sequence needs plane, IdleP, and landPoint in the Level-1 scene.");
+            yield break;
+        }
+
+        SetGameplayCamerasActive(false);
+        SetCutsceneCameraActive(cameraOne, false);
+        SetCutsceneCameraActive(cameraTwo, false);
+
+        SetObjectActive(planeObject, true);
+        SetObjectActive(idleParachute, false);
+
+        Vector3 planeStart = planeObject.transform.position;
+        Vector3 dropPoint = new Vector3(landPoint.position.x, planeStart.y, landPoint.position.z);
+        Vector3 cameraOffset = planeCamera != null ? planeCamera.transform.position - planeStart : Vector3.zero;
+        planeObject.transform.rotation = GetPlaneFlightRotation(dropPoint - planeStart);
+
+        if (planeCamera != null)
+        {
+            SetCutsceneCameraActive(planeCamera, true);
+            SetOnlyListener(planeCamera);
+        }
+
+        yield return MovePlaneToDropPoint(planeStart, dropPoint, cameraOffset);
+
+        SetObjectActive(idleParachute, true);
+        idleParachute.transform.position = dropPoint;
+        FaceDirection(idleParachute.transform, dropPoint - planeStart);
+
+        Animator parachuteAnimator = idleParachute.GetComponentInChildren<Animator>();
+        if (parachuteAnimator != null)
+        {
+            parachuteAnimator.enabled = true;
+        }
+
+        SetObjectActive(planeObject, false);
+        yield return FollowParachuteToLand(dropPoint, landPoint.position);
+    }
+
+    private IEnumerator MovePlaneToDropPoint(Vector3 start, Vector3 end, Vector3 cameraOffset)
+    {
+        float elapsed = 0f;
+        float safeDuration = Mathf.Max(0.01f, PlaneFlightDuration);
+        Quaternion targetRotation = GetPlaneFlightRotation(end - start);
+
+        while (elapsed < safeDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / safeDuration);
+            float eased = SmootherStep(t);
+            planeObject.transform.position = Vector3.Lerp(start, end, eased);
+            planeObject.transform.rotation = targetRotation;
+
+            UpdatePlaneCamera(planeObject.transform, cameraOffset);
+            yield return null;
+        }
+
+        planeObject.transform.position = end;
+        planeObject.transform.rotation = targetRotation;
+    }
+
+    private IEnumerator FollowParachuteToLand(Vector3 start, Vector3 end)
+    {
+        float elapsed = 0f;
+        float safeDuration = Mathf.Max(0.01f, ParachuteFallDuration);
+        float fadeStartTime = Mathf.Max(0f, safeDuration - LandingFadeDuration);
+        Vector3 cameraOffset = planeCamera != null ? planeCamera.transform.position - start : Vector3.zero;
+
+        while (elapsed < safeDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / safeDuration);
+            float eased = SmootherStep(t);
+            idleParachute.transform.position = Vector3.Lerp(start, end, eased);
+            FaceDirection(idleParachute.transform, Vector3.ProjectOnPlane(end - start, Vector3.up));
+            UpdatePlaneCamera(idleParachute.transform, cameraOffset);
+
+            if (elapsed >= fadeStartTime)
+            {
+                BuildBlackFadeOverlay();
+                blackFadeGroup.alpha = Mathf.Clamp01((elapsed - fadeStartTime) / LandingFadeDuration);
+            }
+
+            yield return null;
+        }
+
+        idleParachute.transform.position = end;
+        BuildBlackFadeOverlay();
+        blackFadeGroup.alpha = 1f;
+    }
+
+    private void UpdatePlaneCamera(Transform target, Vector3 worldOffset)
+    {
+        if (planeCamera == null || target == null)
+        {
+            return;
+        }
+
+        Vector3 desiredPosition = target.position + worldOffset;
+        float positionBlend = 1f - Mathf.Exp(-7f * Time.unscaledDeltaTime);
+        float rotationBlend = 1f - Mathf.Exp(-9f * Time.unscaledDeltaTime);
+
+        planeCamera.transform.position = Vector3.Lerp(planeCamera.transform.position, desiredPosition, positionBlend);
+        Vector3 lookDirection = target.position + Vector3.up * 1.8f - planeCamera.transform.position;
+        if (lookDirection.sqrMagnitude > 0.001f)
+        {
+            planeCamera.transform.rotation = Quaternion.Slerp(
+                planeCamera.transform.rotation,
+                Quaternion.LookRotation(lookDirection, Vector3.up),
+                rotationBlend);
+        }
+    }
+
+    private static float SmootherStep(float t)
+    {
+        t = Mathf.Clamp01(t);
+        return t * t * t * (t * (6f * t - 15f) + 10f);
+    }
+
+    private static void FaceDirection(Transform target, Vector3 direction)
+    {
+        Vector3 flatDirection = Vector3.ProjectOnPlane(direction, Vector3.up);
+        if (flatDirection.sqrMagnitude <= 0.001f)
+        {
+            return;
+        }
+
+        target.rotation = Quaternion.Slerp(target.rotation, Quaternion.LookRotation(flatDirection.normalized, Vector3.up), 0.18f);
+    }
+
+    private static Quaternion GetPlaneFlightRotation(Vector3 direction)
+    {
+        Vector3 flatDirection = Vector3.ProjectOnPlane(direction, Vector3.up);
+        if (flatDirection.sqrMagnitude <= 0.001f)
+        {
+            return Quaternion.Euler(PlanePitch, 0f, 0f);
+        }
+
+        Vector3 euler = Quaternion.LookRotation(flatDirection.normalized, Vector3.up).eulerAngles;
+        euler.x = PlanePitch;
+        euler.z = 0f;
+        return Quaternion.Euler(euler);
     }
 
     private IEnumerator TypeBriefing(float startFov, float targetFov, float duration)
@@ -287,6 +480,65 @@ public class LevelOneStartupCutscene : MonoBehaviour
         overlayGroup.alpha = target;
     }
 
+    private void BuildBlackFadeOverlay()
+    {
+        if (blackFadeGroup != null)
+        {
+            return;
+        }
+
+        GameObject canvasObject = new GameObject("LevelOneLandingFadeCanvas");
+        Canvas canvas = canvasObject.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 6000;
+
+        CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.matchWidthOrHeight = 0.5f;
+
+        canvasObject.AddComponent<GraphicRaycaster>();
+        blackFadeGroup = canvasObject.AddComponent<CanvasGroup>();
+        blackFadeGroup.alpha = 0f;
+        blackFadeGroup.interactable = false;
+        blackFadeGroup.blocksRaycasts = false;
+
+        Image blackImage = CreateImage("BlackFade", canvasObject.transform, null, Color.black);
+        Stretch(blackImage.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+    }
+
+    private IEnumerator FadeBlack(float target, float duration)
+    {
+        if (blackFadeGroup == null)
+        {
+            yield break;
+        }
+
+        float start = blackFadeGroup.alpha;
+        float elapsed = 0f;
+        float safeDuration = Mathf.Max(0.01f, duration);
+
+        while (elapsed < safeDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            blackFadeGroup.alpha = Mathf.Lerp(start, target, Mathf.Clamp01(elapsed / safeDuration));
+            yield return null;
+        }
+
+        blackFadeGroup.alpha = target;
+    }
+
+    private void CleanupBlackFade()
+    {
+        if (blackFadeGroup == null)
+        {
+            return;
+        }
+
+        Destroy(blackFadeGroup.gameObject);
+        blackFadeGroup = null;
+    }
+
     private void CacheSceneStates(Scene scene)
     {
         cameraStates.Clear();
@@ -392,7 +644,7 @@ public class LevelOneStartupCutscene : MonoBehaviour
     private void CachePlayerStates(Scene scene)
     {
         playerStates.Clear();
-        HashSet<GameObject> players = new HashSet<GameObject>();
+        List<GameObject> players = new List<GameObject>();
 
         Transform[] transforms = Resources.FindObjectsOfTypeAll<Transform>();
         for (int i = 0; i < transforms.Length; i++)
@@ -403,15 +655,238 @@ public class LevelOneStartupCutscene : MonoBehaviour
                 continue;
             }
 
-            if (transform.CompareTag("Player") || transform.GetComponent<vThirdPersonInput>() != null)
+            GameObject player = GetPlayerRootObject(transform);
+            if (player != null && player.scene == scene && !players.Contains(player))
             {
-                players.Add(transform.gameObject);
+                players.Add(player);
             }
         }
 
-        foreach (GameObject player in players)
+        players.Sort(ComparePreferredPlayerObjects);
+
+        for (int i = 0; i < players.Count; i++)
         {
-            playerStates.Add(new PlayerObjectState(player));
+            playerStates.Add(new PlayerObjectState(players[i]));
+        }
+    }
+
+    private static GameObject GetPlayerRootObject(Transform transform)
+    {
+        vThirdPersonInput input = GetComponentInParentIncludingInactive<vThirdPersonInput>(transform);
+        if (input != null)
+        {
+            return input.gameObject;
+        }
+
+        vThirdPersonController controller = GetComponentInParentIncludingInactive<vThirdPersonController>(transform);
+        if (controller != null)
+        {
+            return controller.gameObject;
+        }
+
+        return transform.CompareTag("Player") ? transform.gameObject : null;
+    }
+
+    private static int ComparePreferredPlayerObjects(GameObject left, GameObject right)
+    {
+        int rightScore = GetPlayerPreferenceScore(right);
+        int leftScore = GetPlayerPreferenceScore(left);
+        return rightScore.CompareTo(leftScore);
+    }
+
+    private static int GetPlayerPreferenceScore(GameObject player)
+    {
+        if (player == null)
+        {
+            return int.MinValue;
+        }
+
+        int score = 0;
+        if (player.activeSelf)
+        {
+            score += 100000;
+        }
+
+        if (player.activeInHierarchy)
+        {
+            score += 50000;
+        }
+
+        if (player.CompareTag("Player"))
+        {
+            score += 10000;
+        }
+
+        if (player.GetComponent<vThirdPersonInput>() != null)
+        {
+            score += 5000;
+        }
+
+        return score + GetHierarchyOrderScore(player.transform);
+    }
+
+    private static vThirdPersonCamera FindPreferredInvectorCamera(Scene scene, Transform target)
+    {
+        vThirdPersonCamera[] cameras = Resources.FindObjectsOfTypeAll<vThirdPersonCamera>();
+        vThirdPersonCamera bestCamera = null;
+        int bestScore = int.MinValue;
+
+        for (int i = 0; i < cameras.Length; i++)
+        {
+            vThirdPersonCamera camera = cameras[i];
+            if (camera == null || camera.gameObject.scene != scene)
+            {
+                continue;
+            }
+
+            int score = GetCameraRigPreferenceScore(camera.gameObject);
+            if (target != null && (camera.mainTarget == target || camera.currentTarget == target))
+            {
+                score += 100000;
+            }
+
+            if (camera.targetCamera != null && camera.targetCamera.gameObject.activeSelf)
+            {
+                score += 1000;
+            }
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestCamera = camera;
+            }
+        }
+
+        return bestCamera;
+    }
+
+    private static RebelGTAThirdPersonCamera FindPreferredGtaCamera(Scene scene, Transform target, vThirdPersonCamera invectorCamera)
+    {
+        RebelGTAThirdPersonCamera[] cameras = Resources.FindObjectsOfTypeAll<RebelGTAThirdPersonCamera>();
+        RebelGTAThirdPersonCamera bestCamera = null;
+        int bestScore = int.MinValue;
+
+        for (int i = 0; i < cameras.Length; i++)
+        {
+            RebelGTAThirdPersonCamera camera = cameras[i];
+            if (camera == null || camera.gameObject.scene != scene)
+            {
+                continue;
+            }
+
+            int score = GetCameraRigPreferenceScore(camera.gameObject);
+            if (target != null && camera.target == target)
+            {
+                score += 100000;
+            }
+
+            if (invectorCamera != null && camera.invectorCamera == invectorCamera)
+            {
+                score += 50000;
+            }
+
+            if (camera.targetCamera != null && camera.targetCamera.gameObject.activeSelf)
+            {
+                score += 1000;
+            }
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestCamera = camera;
+            }
+        }
+
+        return bestCamera;
+    }
+
+    private static int GetCameraRigPreferenceScore(GameObject cameraRig)
+    {
+        if (cameraRig == null)
+        {
+            return int.MinValue;
+        }
+
+        int score = 0;
+        if (cameraRig.activeSelf)
+        {
+            score += 10000;
+        }
+
+        if (cameraRig.activeInHierarchy)
+        {
+            score += 5000;
+        }
+
+        return score + GetHierarchyOrderScore(cameraRig.transform);
+    }
+
+    private static int GetHierarchyOrderScore(Transform transform)
+    {
+        int score = 0;
+        int multiplier = 1;
+        Transform current = transform;
+        while (current != null)
+        {
+            score += current.GetSiblingIndex() * multiplier;
+            multiplier *= 100;
+            current = current.parent;
+        }
+
+        return score;
+    }
+
+    private static T GetComponentInParentIncludingInactive<T>(Transform transform) where T : Component
+    {
+        Transform current = transform;
+        while (current != null)
+        {
+            T component = current.GetComponent<T>();
+            if (component != null)
+            {
+                return component;
+            }
+
+            current = current.parent;
+        }
+
+        return null;
+    }
+
+    private void CacheGameplayRig(Scene scene)
+    {
+        playerRoot = GetPrimaryPlayerTransform();
+        invectorCameraRig = FindPreferredInvectorCamera(scene, playerRoot);
+        gtaCameraDriver = FindPreferredGtaCamera(scene, playerRoot, invectorCameraRig);
+        gameplayRenderCamera = null;
+
+        if (invectorCameraRig != null)
+        {
+            cameraRigTransform = invectorCameraRig.transform;
+            cameraRigLocalPosition = cameraRigTransform.localPosition;
+            cameraRigLocalRotation = cameraRigTransform.localRotation;
+            cameraRigLocalScale = cameraRigTransform.localScale;
+            gameplayRenderCamera = invectorCameraRig.GetComponentInChildren<Camera>(true);
+        }
+
+        if (gameplayRenderCamera == null && gtaCameraDriver != null)
+        {
+            gameplayRenderCamera = gtaCameraDriver.targetCamera != null
+                ? gtaCameraDriver.targetCamera
+                : gtaCameraDriver.GetComponentInChildren<Camera>(true);
+        }
+
+        if (gameplayRenderCamera != null)
+        {
+            gameplayCameraTransform = gameplayRenderCamera.transform;
+            gameplayCameraLocalPosition = gameplayCameraTransform.localPosition;
+            gameplayCameraLocalRotation = gameplayCameraTransform.localRotation;
+            gameplayCameraLocalScale = gameplayCameraTransform.localScale;
+        }
+
+        if (gtaCameraDriver != null)
+        {
+            gtaCameraDriverWasEnabled = gtaCameraDriver.enabled;
         }
     }
 
@@ -420,6 +895,283 @@ public class LevelOneStartupCutscene : MonoBehaviour
         for (int i = 0; i < playerStates.Count; i++)
         {
             playerStates[i].Restore();
+        }
+    }
+
+    private void MovePlayersToLandPoint()
+    {
+        if (landPoint == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < playerStates.Count; i++)
+        {
+            GameObject player = playerStates[i].Player;
+            if (player != null)
+            {
+                player.transform.position = landPoint.position;
+            }
+        }
+    }
+
+    private void SetGameplayCameraRigsActive(Scene scene, bool active)
+    {
+        vThirdPersonCamera[] invectorCameras = Resources.FindObjectsOfTypeAll<vThirdPersonCamera>();
+        for (int i = 0; i < invectorCameras.Length; i++)
+        {
+            vThirdPersonCamera invectorCamera = invectorCameras[i];
+            if (invectorCamera != null && invectorCamera.gameObject.scene == scene)
+            {
+                invectorCamera.gameObject.SetActive(active);
+                Camera renderCamera = invectorCamera.GetComponentInChildren<Camera>(true);
+                if (renderCamera != null)
+                {
+                    renderCamera.gameObject.SetActive(active);
+                    renderCamera.enabled = active;
+                }
+            }
+        }
+
+        RebelGTAThirdPersonCamera[] gtaCameras = Resources.FindObjectsOfTypeAll<RebelGTAThirdPersonCamera>();
+        for (int i = 0; i < gtaCameras.Length; i++)
+        {
+            RebelGTAThirdPersonCamera gtaCamera = gtaCameras[i];
+            if (gtaCamera != null && gtaCamera.gameObject.scene == scene)
+            {
+                gtaCamera.gameObject.SetActive(active);
+                if (gtaCamera.targetCamera != null)
+                {
+                    gtaCamera.targetCamera.gameObject.SetActive(active);
+                    gtaCamera.targetCamera.enabled = active;
+                }
+            }
+        }
+    }
+
+    private Camera RestoreGameplayCamera(Scene scene)
+    {
+        Transform playerTarget = playerRoot != null ? playerRoot : GetPrimaryPlayerTransform();
+        Camera gameplayCamera = gameplayRenderCamera;
+        vThirdPersonCamera[] invectorCameras = Resources.FindObjectsOfTypeAll<vThirdPersonCamera>();
+        for (int i = 0; i < invectorCameras.Length; i++)
+        {
+            vThirdPersonCamera invectorCamera = invectorCameras[i];
+            if (invectorCamera == null || invectorCamera.gameObject.scene != scene)
+            {
+                continue;
+            }
+
+            bool shouldEnable = invectorCameraRig == null || invectorCamera == invectorCameraRig;
+            invectorCamera.gameObject.SetActive(shouldEnable);
+            invectorCamera.enabled = shouldEnable;
+            if (!shouldEnable)
+            {
+                continue;
+            }
+
+            if (invectorCamera == invectorCameraRig && cameraRigTransform != null)
+            {
+                cameraRigTransform.localPosition = cameraRigLocalPosition;
+                cameraRigTransform.localRotation = cameraRigLocalRotation;
+                cameraRigTransform.localScale = cameraRigLocalScale;
+            }
+
+            Camera renderCamera = invectorCamera.GetComponentInChildren<Camera>(true);
+            if (renderCamera != null)
+            {
+                renderCamera.gameObject.SetActive(true);
+                renderCamera.enabled = true;
+                gameplayCamera = renderCamera;
+
+                if (renderCamera == gameplayRenderCamera && gameplayCameraTransform != null)
+                {
+                    gameplayCameraTransform.localPosition = gameplayCameraLocalPosition;
+                    gameplayCameraTransform.localRotation = gameplayCameraLocalRotation;
+                    gameplayCameraTransform.localScale = gameplayCameraLocalScale;
+                }
+            }
+
+            if (playerTarget != null)
+            {
+                invectorCamera.SetMainTarget(playerTarget);
+            }
+
+            if (gameplayCamera != null)
+            {
+                invectorCamera.targetCamera = gameplayCamera;
+            }
+
+            invectorCamera.isFreezed = false;
+            invectorCamera.ResetTarget();
+            invectorCamera.ResetAngle();
+        }
+
+        RestoreExistingCameraDrivers(scene, playerTarget, gameplayCamera);
+        RestoreCachedGameplayTransforms();
+
+        if (gameplayCamera != null)
+        {
+            SetOnlyListener(gameplayCamera);
+        }
+
+        return gameplayCamera;
+    }
+
+    private void RestoreExistingCameraDrivers(Scene scene, Transform playerTarget, Camera gameplayCamera)
+    {
+        RebelGTAThirdPersonCamera[] gtaCameras = Resources.FindObjectsOfTypeAll<RebelGTAThirdPersonCamera>();
+        for (int i = 0; i < gtaCameras.Length; i++)
+        {
+            RebelGTAThirdPersonCamera gtaCamera = gtaCameras[i];
+            if (gtaCamera == null || gtaCamera.gameObject.scene != scene)
+            {
+                continue;
+            }
+
+            bool shouldEnable = gtaCameraDriver == null || gtaCamera == gtaCameraDriver;
+            gtaCamera.gameObject.SetActive(shouldEnable);
+            if (!shouldEnable)
+            {
+                continue;
+            }
+
+            gtaCamera.enabled = gtaCamera == gtaCameraDriver ? gtaCameraDriverWasEnabled : gtaCamera.enabled;
+
+            if (playerTarget != null)
+            {
+                gtaCamera.target = playerTarget;
+            }
+
+            if (gameplayCamera != null)
+            {
+                gtaCamera.targetCamera = gameplayCamera;
+            }
+
+            if (gtaCamera.invectorCamera == null)
+            {
+                gtaCamera.invectorCamera = invectorCameraRig != null
+                    ? invectorCameraRig
+                    : FindSceneObjectOfType<vThirdPersonCamera>(scene);
+            }
+
+            gtaCamera.SnapBehindTarget();
+        }
+    }
+
+    private void RestoreCachedGameplayTransforms()
+    {
+        if (cameraRigTransform != null)
+        {
+            cameraRigTransform.localPosition = cameraRigLocalPosition;
+            cameraRigTransform.localRotation = cameraRigLocalRotation;
+            cameraRigTransform.localScale = cameraRigLocalScale;
+        }
+
+        if (gameplayCameraTransform != null)
+        {
+            gameplayCameraTransform.localPosition = gameplayCameraLocalPosition;
+            gameplayCameraTransform.localRotation = gameplayCameraLocalRotation;
+            gameplayCameraTransform.localScale = gameplayCameraLocalScale;
+        }
+    }
+
+    private void ResetPlayerRuntimeState(Scene scene, Camera gameplayCamera)
+    {
+        for (int i = 0; i < playerStates.Count; i++)
+        {
+            GameObject player = playerStates[i].Player;
+            if (player == null)
+            {
+                continue;
+            }
+
+            Rigidbody body = player.GetComponent<Rigidbody>();
+            if (body != null)
+            {
+                body.linearVelocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+            }
+
+            vThirdPersonController controller = player.GetComponent<vThirdPersonController>();
+            if (controller != null)
+            {
+                controller.EnableGravityAndCollision();
+                controller.ResetControllerSpeedMultiplier();
+                controller.StopCharacter();
+            }
+
+            vThirdPersonInput input = player.GetComponent<vThirdPersonInput>();
+            if (input != null)
+            {
+                input.lockMoveInput = false;
+                input.SetLockAllInput(false);
+                input.SetLockCameraInput(false);
+                input.SetLockUpdateMoveDirection(false);
+
+                if (gameplayCamera != null)
+                {
+                    input.cameraMain = gameplayCamera;
+                }
+
+                vThirdPersonCamera invectorCamera = FindSceneObjectOfType<vThirdPersonCamera>(scene);
+                if (invectorCamera != null)
+                {
+                    input.tpCamera = invectorCameraRig != null ? invectorCameraRig : invectorCamera;
+                }
+            }
+        }
+    }
+
+    private Transform GetPrimaryPlayerTransform()
+    {
+        for (int i = 0; i < playerStates.Count; i++)
+        {
+            GameObject player = playerStates[i].Player;
+            if (player != null && player.GetComponent<vThirdPersonInput>() != null)
+            {
+                return player.transform;
+            }
+        }
+
+        for (int i = 0; i < playerStates.Count; i++)
+        {
+            GameObject player = playerStates[i].Player;
+            if (player != null)
+            {
+                return player.transform;
+            }
+        }
+
+        return null;
+    }
+
+    private void DisableSceneCamerasExcept(Scene scene, Camera activeCamera)
+    {
+        if (activeCamera == null)
+        {
+            Debug.LogWarning("LevelOneStartupCutscene could not find the gameplay camera to restore after landing.");
+            return;
+        }
+
+        Camera[] cameras = Resources.FindObjectsOfTypeAll<Camera>();
+        for (int i = 0; i < cameras.Length; i++)
+        {
+            Camera camera = cameras[i];
+            if (camera == null || camera.gameObject.scene != scene)
+            {
+                continue;
+            }
+
+            bool shouldEnable = camera == activeCamera;
+            camera.gameObject.SetActive(shouldEnable);
+            camera.enabled = shouldEnable;
+
+            AudioListener listener = camera.GetComponent<AudioListener>();
+            if (listener != null)
+            {
+                listener.enabled = shouldEnable;
+            }
         }
     }
 
@@ -474,6 +1226,7 @@ public class LevelOneStartupCutscene : MonoBehaviour
             LockPlayerInput(false);
             UnlockAllPlayerInputsInScene(scene);
             CleanupVoiceSource();
+            CleanupBlackFade();
         }
     }
 
@@ -505,6 +1258,29 @@ public class LevelOneStartupCutscene : MonoBehaviour
         }
 
         return null;
+    }
+
+    private static GameObject FindSceneGameObject(Scene scene, string objectName)
+    {
+        GameObject[] objects = Resources.FindObjectsOfTypeAll<GameObject>();
+        for (int i = 0; i < objects.Length; i++)
+        {
+            GameObject candidate = objects[i];
+            if (candidate != null && candidate.scene == scene && candidate.name == objectName)
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static void SetObjectActive(GameObject target, bool active)
+    {
+        if (target != null)
+        {
+            target.SetActive(active);
+        }
     }
 
     private static void UnlockAllPlayerInputsInScene(Scene scene)

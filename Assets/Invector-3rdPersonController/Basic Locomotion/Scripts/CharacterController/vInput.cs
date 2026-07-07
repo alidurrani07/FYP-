@@ -212,6 +212,7 @@ namespace Invector.vCharacterController
     [System.Serializable]
     public class GenericInput
     {
+        private static readonly char[] compositeSeparators = new[] { '|', ';', ',' };
         protected InputDevice inputDevice { get { return vInput.instance.inputDevice; } }
         public bool useInput = true;
         [SerializeField]
@@ -386,6 +387,10 @@ namespace Invector.vCharacterController
         {
             if (string.IsNullOrEmpty(buttonName) || !IsButtonAvailable(this.buttonName)) return false;
             if (isAxis) return GetAxisButton();
+            if (HasCompositeBindings(this.buttonName))
+            {
+                return CheckCompositeBindings(Input.GetKey, Input.GetButton);
+            }
 
             // mobile
             if (inputDevice == InputDevice.Mobile)
@@ -426,6 +431,10 @@ namespace Invector.vCharacterController
         {
             if (string.IsNullOrEmpty(buttonName) || !IsButtonAvailable(this.buttonName)) return false;
             if (isAxis) return GetAxisButtonDown();
+            if (HasCompositeBindings(this.buttonName))
+            {
+                return CheckCompositeBindings(Input.GetKeyDown, Input.GetButtonDown);
+            }
             // mobile
             if (inputDevice == InputDevice.Mobile)
             {
@@ -465,6 +474,10 @@ namespace Invector.vCharacterController
         {
             if (string.IsNullOrEmpty(buttonName) || !IsButtonAvailable(this.buttonName)) return false;
             if (isAxis) return GetAxisButtonUp();
+            if (HasCompositeBindings(this.buttonName))
+            {
+                return CheckCompositeBindings(Input.GetKeyUp, Input.GetButtonUp);
+            }
 
             // mobile
             if (inputDevice == InputDevice.Mobile)
@@ -780,6 +793,11 @@ namespace Invector.vCharacterController
             if (!useInput) return false;
             try
             {
+                if (HasCompositeBindings(btnName))
+                {
+                    return true;
+                }
+
                 if (isKey) return true;
                 Input.GetButton(buttonName);
                 return true;
@@ -789,6 +807,38 @@ namespace Invector.vCharacterController
                 Debug.LogWarning(" Failure to try access button :" + buttonName + "\n" + exc.Message);
                 return false;
             }
+        }
+
+        private static bool HasCompositeBindings(string btnName)
+        {
+            return !string.IsNullOrEmpty(btnName) && btnName.IndexOfAny(compositeSeparators) >= 0;
+        }
+
+        private bool CheckCompositeBindings(System.Func<KeyCode, bool> keyCheck, System.Func<string, bool> buttonCheck)
+        {
+            string[] bindings = buttonName.Split(compositeSeparators, System.StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < bindings.Length; i++)
+            {
+                string binding = bindings[i].Trim();
+                if (string.IsNullOrEmpty(binding))
+                {
+                    continue;
+                }
+
+                if (System.Enum.IsDefined(typeof(KeyCode), binding))
+                {
+                    if (keyCheck((KeyCode)System.Enum.Parse(typeof(KeyCode), binding)))
+                    {
+                        return true;
+                    }
+                }
+                else if (buttonCheck(binding))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
     }

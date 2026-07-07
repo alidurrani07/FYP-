@@ -18,8 +18,11 @@ public class AIWorldRuntimeFix : MonoBehaviour
 {
     private const string DemoSceneName = "Demo Scene 1";
     private const string LevelOneSceneName = "Level-1";
+    private const string RebelSceneName = "RebelScene";
+    private const string ArmySceneName = "ArmyScene";
     private const int DemoRifleItemId = 11;
     private const float EnemyShootRange = 45f;
+    private const float RebelArmyEnemyShootRange = 30f;
     private const float EnemyBurstCooldown = 6f;
 
     private static AIWorldRuntimeFix instance;
@@ -225,6 +228,7 @@ public class AIWorldRuntimeFix : MonoBehaviour
 
     private void ConfigureCompleteEnemies()
     {
+        bool rebelArmyScene = IsRebelArmyScene();
         CompleteEnemyAI[] enemies = FindObjectsOfType<CompleteEnemyAI>(true);
         for (int i = 0; i < enemies.Length; i++)
         {
@@ -236,16 +240,27 @@ public class AIWorldRuntimeFix : MonoBehaviour
 
             SetTag(enemy.gameObject, "Enemy");
             enemy.targetTags = new[] { "Player", "CompanionAI" };
-            enemy.detectionRange = EnemyShootRange;
-            enemy.attackRange = EnemyShootRange;
+            enemy.detectionRange = rebelArmyScene ? RebelArmyEnemyShootRange : EnemyShootRange;
+            enemy.attackRange = rebelArmyScene ? RebelArmyEnemyShootRange : EnemyShootRange;
             enemy.restAfterBurst = EnemyBurstCooldown;
             enemy.usePercentBurstDamage = true;
             enemy.burstDamagePercent = 0.3f;
             enemy.burstShots = Mathf.Max(enemy.burstShots, 3);
             enemy.fireInterval = Mathf.Min(Mathf.Max(enemy.fireInterval, 0.1f), 0.35f);
-            enemy.requireLineOfSight = false;
+            enemy.requireLineOfSight = rebelArmyScene;
+            enemy.lineOfSightMask = Physics.DefaultRaycastLayers;
             enemy.faceTargetWhileFiring = true;
-            enemy.staticEnemy = true;
+            enemy.staticEnemy = !rebelArmyScene;
+            if (rebelArmyScene)
+            {
+                enemy.patrolSpeed = Mathf.Clamp(enemy.patrolSpeed, 0.9f, 1.15f);
+                enemy.chaseSpeed = Mathf.Clamp(enemy.chaseSpeed, 1.8f, 2.4f);
+                enemy.fallbackPatrolRadius = Mathf.Max(enemy.fallbackPatrolRadius, 10f);
+                enemy.fallbackPatrolWait = Mathf.Clamp(enemy.fallbackPatrolWait, 0.8f, 2.5f);
+                enemy.patrolGripIKWeight = Mathf.Max(enemy.patrolGripIKWeight, 0.75f);
+                enemy.combatGripIKWeight = 1f;
+                enemy.ikBlendSpeed = Mathf.Max(enemy.ikBlendSpeed, 8f);
+            }
             enemy.gameObject.layer = GetLayer("Enemy", 9);
             enemy.enemyLayer = GetLayer("Enemy", 9);
             enemy.bodyPartLayer = GetLayer("BodyPart", 15);
@@ -253,6 +268,56 @@ public class AIWorldRuntimeFix : MonoBehaviour
             ConfigureShooterAgent(enemy.GetComponent<NavMeshAgent>());
             EnsureBodyDamageReceivers(enemy.gameObject, "Enemy", false);
             EnsureDeathGrounder(enemy.gameObject);
+        }
+
+        if (rebelArmyScene)
+        {
+            ConfigureRebelArmyGunEnemies();
+            ConfigureRebelArmyPatrols();
+        }
+    }
+
+    private void ConfigureRebelArmyGunEnemies()
+    {
+        EnemyGunAttack[] gunEnemies = FindObjectsOfType<EnemyGunAttack>(true);
+        for (int i = 0; i < gunEnemies.Length; i++)
+        {
+            EnemyGunAttack gunEnemy = gunEnemies[i];
+            if (gunEnemy == null)
+            {
+                continue;
+            }
+
+            SetTag(gunEnemy.gameObject, "Enemy");
+            gunEnemy.targetTags = new[] { "Player", "CompanionAI" };
+            gunEnemy.detectionRange = RebelArmyEnemyShootRange;
+            gunEnemy.closeRange = Mathf.Min(gunEnemy.closeRange, 3f);
+            gunEnemy.minimumPlayerDistance = Mathf.Clamp(gunEnemy.minimumPlayerDistance, 8f, 12f);
+            gunEnemy.preferredPlayerDistance = Mathf.Clamp(gunEnemy.preferredPlayerDistance, 12f, RebelArmyEnemyShootRange);
+            gunEnemy.hideGunWhileMoving = false;
+            gunEnemy.useAimIK = true;
+            gunEnemy.forceHandPoseIfNoIKPass = true;
+            gunEnemy.requireLineOfSight = true;
+            gunEnemy.lineOfSightMask = Physics.DefaultRaycastLayers;
+        }
+    }
+
+    private void ConfigureRebelArmyPatrols()
+    {
+        EnemyPatrol[] patrols = FindObjectsOfType<EnemyPatrol>(true);
+        for (int i = 0; i < patrols.Length; i++)
+        {
+            EnemyPatrol patrol = patrols[i];
+            if (patrol == null)
+            {
+                continue;
+            }
+
+            SetTag(patrol.gameObject, "Enemy");
+            patrol.generateRuntimePatrolPoints = true;
+            patrol.generatedPointCount = Mathf.Max(patrol.generatedPointCount, 4);
+            patrol.generatedPointRadius = Mathf.Max(patrol.generatedPointRadius, 8f);
+            patrol.speed = Mathf.Clamp(patrol.speed, 0.9f, 1.15f);
         }
     }
 
@@ -659,6 +724,12 @@ public class AIWorldRuntimeFix : MonoBehaviour
     private bool IsDemoScene1()
     {
         return SceneManager.GetActiveScene().name == DemoSceneName;
+    }
+
+    private bool IsRebelArmyScene()
+    {
+        string sceneName = SceneManager.GetActiveScene().name;
+        return sceneName == RebelSceneName || sceneName == ArmySceneName;
     }
 
     private void ConfigureHumanoid(Transform root)

@@ -7,7 +7,9 @@ public class EnemyPatrol : MonoBehaviour
 {
     public Transform[] patrolPoints;
     public int targetPoint;
-    public float speed = 2f;
+    public float speed = 1.15f;
+    public string speedParameter = "Speed";
+    public float animationDampTime = 0.12f;
 
     [Header("Runtime Patrol Fallback")]
     public bool generateRuntimePatrolPoints = true;
@@ -26,7 +28,7 @@ public class EnemyPatrol : MonoBehaviour
     void Start()
     {
         targetPoint = 0;
-        animator = GetComponent<Animator>();
+        animator = GetComponentInChildren<Animator>();
         EnsurePatrolPoints();
         SnapTransformToGround();
     }
@@ -85,7 +87,7 @@ public class EnemyPatrol : MonoBehaviour
 
         if (!HasPatrolPoints())
         {
-            animator.SetFloat("Speed", 0f);
+            animator.SetFloat(speedParameter, 0f, animationDampTime, Time.deltaTime);
             return;
         }
 
@@ -99,7 +101,7 @@ public class EnemyPatrol : MonoBehaviour
             currentSpeed = 0f;
 
         // Send speed to Animator
-        animator.SetFloat("Speed", currentSpeed);
+        animator.SetFloat(speedParameter, currentSpeed, animationDampTime, Time.deltaTime);
     }
 
     void IncreaseTargetIndex()

@@ -247,7 +247,10 @@ namespace Invector.vItemManager
         /// </summary>
         public virtual void UpdateInventory()
         {
-            OnUpdateInventory.Invoke();
+            if (OnUpdateInventory != null)
+            {
+                OnUpdateInventory.Invoke();
+            }
         }
 
         /// <summary>

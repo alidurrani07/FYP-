@@ -227,7 +227,7 @@ AnimatorController:
     m_BlendingMode: 0
     m_SyncedLayerIndex: -1
     m_DefaultWeight: 0
-    m_IKPass: 0
+    m_IKPass: 1
     m_SyncedLayerAffectsTiming: 0
     m_Controller: {fileID: 9100000}
 --- !u!1102 &201141149740320333
@@ -265,7 +265,7 @@ AnimatorState:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Walk
-  m_Speed: 1
+  m_Speed: 1.45
   m_CycleOffset: 0
   m_Transitions:
   - {fileID: 4282642376287383035}
@@ -279,7 +279,7 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: -203655887218126122, guid: 1600080dd9954a04d9dcf63592b20505, type: 3}
+  m_Motion: {fileID: -203655887218126122, guid: 6e6969ea01d2073469aa3637e59c70d5, type: 3}
   m_Tag: 
   m_SpeedParameter: 
   m_MirrorParameter: 
