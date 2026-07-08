@@ -54,10 +54,10 @@ QualitySettings:
     terrainDetailDensityScale: 1
     terrainBasemapDistance: 1000
     terrainDetailDistance: 80
-    terrainTreeDistance: 5000
-    terrainBillboardStart: 50
-    terrainFadeLength: 5
-    terrainMaxTrees: 50
+    terrainTreeDistance: 180
+    terrainBillboardStart: 35
+    terrainFadeLength: 12
+    terrainMaxTrees: 20
     excludedTargetPlatforms:
     - Standalone
   - serializedVersion: 5
@@ -108,10 +108,10 @@ QualitySettings:
     terrainDetailDensityScale: 1
     terrainBasemapDistance: 1000
     terrainDetailDistance: 80
-    terrainTreeDistance: 5000
-    terrainBillboardStart: 50
-    terrainFadeLength: 5
-    terrainMaxTrees: 50
+    terrainTreeDistance: 280
+    terrainBillboardStart: 45
+    terrainFadeLength: 16
+    terrainMaxTrees: 30
     excludedTargetPlatforms:
     - Android
     - iPhone

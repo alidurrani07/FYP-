@@ -4,6 +4,13 @@ using UnityEngine.SceneManagement;
 
 public static class TerrainTreeRuntimeSanitizer
 {
+    private const float MaxTreeDistance = 280f;
+    private const float MaxDetailDistance = 65f;
+    private const float MaxBasemapDistance = 650f;
+    private const float BillboardStart = 45f;
+    private const float TreeFadeLength = 16f;
+    private const int MaxFullLodTrees = 30;
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Initialize()
     {
@@ -27,9 +34,20 @@ public static class TerrainTreeRuntimeSanitizer
             Terrain terrain = terrains[i];
             if (terrain != null)
             {
+                ApplyPerformanceCaps(terrain);
                 SanitizeTerrainData(terrain.terrainData, visited);
             }
         }
+    }
+
+    private static void ApplyPerformanceCaps(Terrain terrain)
+    {
+        terrain.treeDistance = Mathf.Min(terrain.treeDistance, MaxTreeDistance);
+        terrain.treeBillboardDistance = Mathf.Min(terrain.treeBillboardDistance, BillboardStart);
+        terrain.treeCrossFadeLength = Mathf.Max(terrain.treeCrossFadeLength, TreeFadeLength);
+        terrain.treeMaximumFullLODCount = Mathf.Min(terrain.treeMaximumFullLODCount, MaxFullLodTrees);
+        terrain.detailObjectDistance = Mathf.Min(terrain.detailObjectDistance, MaxDetailDistance);
+        terrain.basemapDistance = Mathf.Min(terrain.basemapDistance, MaxBasemapDistance);
     }
 
     private static void SanitizeTerrainData(TerrainData terrainData, HashSet<TerrainData> visited)

@@ -13,7 +13,9 @@ public class MiniMap : MonoBehaviour
     private const string MiniMapImageName = "miniMap";
     private const string PlayerModelName = "3D Model";
     private const float ResolveInterval = 0.5f;
-    private const int MaxWorldMarkers = 42;
+    private const float MarkerRefreshInterval = 5f;
+    private const float ObjectiveRefreshInterval = 0.75f;
+    private const int MaxWorldMarkers = 28;
 
     private static MiniMap instance;
     private static Sprite circleSprite;
@@ -50,6 +52,11 @@ public class MiniMap : MonoBehaviour
     private readonly List<MapMarker> markers = new List<MapMarker>();
     private readonly List<Transform> candidates = new List<Transform>();
     private float nextResolveTime;
+    private float nextMarkerRefreshTime;
+    private float nextObjectiveRefreshTime;
+    private Transform cachedObjectiveTarget;
+    private Transform level2Objective;
+    private Transform cutsceneObjective;
     private bool configured;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -81,6 +88,11 @@ public class MiniMap : MonoBehaviour
         configured = false;
         markers.Clear();
         candidates.Clear();
+        cachedObjectiveTarget = null;
+        level2Objective = null;
+        cutsceneObjective = null;
+        nextMarkerRefreshTime = 0f;
+        nextObjectiveRefreshTime = 0f;
         StartCoroutine(DelayedConfigure());
     }
 
@@ -96,10 +108,19 @@ public class MiniMap : MonoBehaviour
 
     private void Update()
     {
-        if (!configured || Time.unscaledTime >= nextResolveTime)
+        if (!configured)
         {
-            nextResolveTime = Time.unscaledTime + ResolveInterval;
-            ConfigureForCurrentScene();
+            if (Time.unscaledTime >= nextResolveTime)
+            {
+                nextResolveTime = Time.unscaledTime + ResolveInterval;
+                ConfigureForCurrentScene();
+            }
+        }
+        else if (Time.unscaledTime >= nextMarkerRefreshTime)
+        {
+            nextMarkerRefreshTime = Time.unscaledTime + MarkerRefreshInterval;
+            ResolvePlayer();
+            ResolveWorldMarkers();
         }
 
         bool hasActiveModel = playerModel != null && playerModel.gameObject.activeInHierarchy;
@@ -129,6 +150,12 @@ public class MiniMap : MonoBehaviour
         BuildUi();
         ResolveWorldMarkers();
         configured = player != null && playerModel != null && miniMapImage != null;
+        if (configured)
+        {
+            nextMarkerRefreshTime = Time.unscaledTime + MarkerRefreshInterval;
+            nextObjectiveRefreshTime = 0f;
+        }
+
         SetVisible(configured && playerModel != null && playerModel.gameObject.activeInHierarchy);
     }
 
@@ -403,11 +430,25 @@ public class MiniMap : MonoBehaviour
     private void ResolveWorldMarkers()
     {
         candidates.Clear();
+        level2Objective = null;
+        cutsceneObjective = null;
+
+        AddComponentTargets(FindObjectsOfType<CutsceneTrigger>(true));
+        AddComponentTargets(FindObjectsOfType<CompleteEnemyAI>(true));
+        AddComponentTargets(FindObjectsOfType<EnemyPatrol>(true));
+        AddComponentTargets(FindObjectsOfType<EnemyGunAttack>(true));
+        AddComponentTargets(FindObjectsOfType<SimpleAI>(true));
+
         Transform[] transforms = FindObjectsOfType<Transform>(true);
         for (int i = 0; i < transforms.Length; i++)
         {
             Transform target = transforms[i];
             if (target == null || target == player || target.IsChildOf(transform) || IsUiTransform(target))
+            {
+                continue;
+            }
+
+            if (!LooksLikeNamedMapTarget(target))
             {
                 continue;
             }
@@ -418,14 +459,72 @@ public class MiniMap : MonoBehaviour
                 continue;
             }
 
-            if (kind == MarkerKind.Cutscene || kind == MarkerKind.Enemy || HasVisibleWorldPresence(target))
+            CacheObjectiveReference(target, kind);
+
+            if (kind != MarkerKind.Enemy && (kind == MarkerKind.Cutscene || HasVisibleWorldPresence(target)))
             {
-                candidates.Add(target);
+                AddCandidate(target);
             }
         }
 
         candidates.Sort(CompareCandidates);
         RebuildMarkerPool();
+        cachedObjectiveTarget = SelectPreferredObjectiveTransform();
+    }
+
+    private void AddComponentTargets<T>(T[] components) where T : Component
+    {
+        if (components == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < components.Length; i++)
+        {
+            T component = components[i];
+            if (component == null || component.transform == null || IsPlayerTarget(component.transform))
+            {
+                continue;
+            }
+
+            MarkerKind kind = Classify(component.transform);
+            if (kind == MarkerKind.None)
+            {
+                continue;
+            }
+
+            CacheObjectiveReference(component.transform, kind);
+            AddCandidate(component.transform);
+        }
+    }
+
+    private void AddCandidate(Transform target)
+    {
+        if (target == null || candidates.Contains(target))
+        {
+            return;
+        }
+
+        candidates.Add(target);
+    }
+
+    private void CacheObjectiveReference(Transform target, MarkerKind kind)
+    {
+        if (target == null || kind != MarkerKind.Cutscene)
+        {
+            return;
+        }
+
+        string name = target.name.ToLowerInvariant();
+        if (level2Objective == null && name.Contains("level2 trigger"))
+        {
+            level2Objective = target;
+        }
+
+        if (cutsceneObjective == null && (name.Contains("cutscene trigger") || name.Contains("cut scene trigger")))
+        {
+            cutsceneObjective = target;
+        }
     }
 
     private void RebuildMarkerPool()
@@ -518,7 +617,13 @@ public class MiniMap : MonoBehaviour
 
     private void UpdateObjectiveDistance()
     {
-        Transform objectiveTarget = FindPreferredObjectiveTransform();
+        if (Time.unscaledTime >= nextObjectiveRefreshTime || !IsUsableTarget(cachedObjectiveTarget))
+        {
+            nextObjectiveRefreshTime = Time.unscaledTime + ObjectiveRefreshInterval;
+            cachedObjectiveTarget = SelectPreferredObjectiveTransform();
+        }
+
+        Transform objectiveTarget = cachedObjectiveTarget;
         MapMarker objective = FindMarkerForTransform(objectiveTarget);
         if (objectiveTarget == null && objective != null)
         {
@@ -599,18 +704,16 @@ public class MiniMap : MonoBehaviour
         return best;
     }
 
-    private Transform FindPreferredObjectiveTransform()
+    private Transform SelectPreferredObjectiveTransform()
     {
-        Transform namedTarget = FindObjectiveByName("Level2 Trigger");
-        if (namedTarget != null)
+        if (IsUsableTarget(level2Objective))
         {
-            return namedTarget;
+            return level2Objective;
         }
 
-        namedTarget = FindObjectiveByName("Cutscene Trigger");
-        if (namedTarget != null)
+        if (IsUsableTarget(cutsceneObjective))
         {
-            return namedTarget;
+            return cutsceneObjective;
         }
 
         MapMarker marker = GetNearestObjective();
@@ -629,26 +732,6 @@ public class MiniMap : MonoBehaviour
             if (markers[i].Target == target)
             {
                 return markers[i];
-            }
-        }
-
-        return null;
-    }
-
-    private static Transform FindObjectiveByName(string targetName)
-    {
-        if (string.IsNullOrEmpty(targetName))
-        {
-            return null;
-        }
-
-        Transform[] transforms = FindObjectsOfType<Transform>(true);
-        for (int i = 0; i < transforms.Length; i++)
-        {
-            Transform current = transforms[i];
-            if (current != null && current.name == targetName)
-            {
-                return current;
             }
         }
 
@@ -743,6 +826,40 @@ public class MiniMap : MonoBehaviour
 
         Collider collider = target.GetComponentInChildren<Collider>(true);
         return collider != null && !collider.isTrigger;
+    }
+
+    private static bool LooksLikeNamedMapTarget(Transform target)
+    {
+        if (target == null || string.IsNullOrEmpty(target.name))
+        {
+            return false;
+        }
+
+        string name = target.name.ToLowerInvariant();
+        return name.Contains("cutscene") ||
+            name.Contains("cut scene") ||
+            name.Contains("trigger") ||
+            name.Contains("level2 trigger") ||
+            name.Contains("enemy") ||
+            name.Contains("guard") ||
+            name.Contains("soldier") ||
+            name.Contains("patrol") ||
+            name.Contains("letter") ||
+            name.Contains("paper") ||
+            name.Contains("tent") ||
+            name.Contains("camp") ||
+            name.Contains("tower") ||
+            name.Contains("hangar") ||
+            name.Contains("garage") ||
+            name.Contains("building") ||
+            name.Contains("barrack") ||
+            name.Contains("container") ||
+            name.Contains("base");
+    }
+
+    private static bool IsUsableTarget(Transform target)
+    {
+        return target != null && target.gameObject != null && target.gameObject.activeInHierarchy;
     }
 
     private static bool IsPlayerTarget(Transform target)
